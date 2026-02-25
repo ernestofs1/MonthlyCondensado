@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Condensado Mensual</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; color: #333; }
+
+    .header { background: #1a1a2e; color: #fff; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
+    .header h1 { font-size: 18px; font-weight: 600; }
+    .header .company { font-size: 12px; opacity: 0.7; }
+
+    .toolbar { background: #fff; padding: 12px 24px; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .year-nav { display: flex; align-items: center; gap: 8px; }
+    .year-nav button { background: #e0e0e0; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 14px; }
+    .year-nav button:hover { background: #c0c0c0; }
+    .year-nav span { font-weight: 600; font-size: 16px; min-width: 50px; text-align: center; }
+    .month-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+    .month-chip { padding: 6px 14px; border: 1px solid #ccc; border-radius: 20px; cursor: pointer; font-size: 13px; background: #fff; transition: all 0.2s; }
+    .month-chip:hover { background: #e8eaf6; }
+    .month-chip.active { background: #1a1a2e; color: #fff; border-color: #1a1a2e; }
+
+    .content { max-width: 1100px; margin: 20px auto; padding: 0 16px; }
+    .loading { text-align: center; padding: 40px; color: #888; font-size: 16px; }
+
+    /* Report Header */
+    .report-header { background: #fff; border-radius: 8px; padding: 20px 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .report-title { font-size: 18px; font-weight: 700; color: #1a1a2e; margin-bottom: 4px; }
+    .report-subtitle { font-size: 14px; color: #666; }
+    .report-actions { margin-top: 12px; display: flex; gap: 10px; }
+    .btn { padding: 8px 18px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+    .btn-pdf { background: #dc3545; color: #fff; }
+    .btn-pdf:hover { background: #c82333; }
+    .btn-back { background: #6c757d; color: #fff; }
+    .btn-back:hover { background: #545b62; }
+    .btn-print-all { background: #17a2b8; color: #fff; }
+    .btn-print-all:hover { background: #138496; }
+
+    /* Summary Table */
+    .summary-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 14px; }
+    .summary-table th { background: #1a1a2e; color: #fff; padding: 12px 14px; text-align: left; font-weight: 600; }
+    .summary-table td { padding: 10px 14px; border-bottom: 1px solid #eee; }
+    .summary-table tr:hover { background: #f0f4ff; cursor: pointer; }
+    .summary-table tr.total-row { background: #f1f3f5 !important; cursor: default; }
+    .summary-table tr.total-row td { border-top: 2px solid #333; font-weight: 700; font-size: 15px; }
+    .status-pill { padding: 2px 10px; border-radius: 10px; font-size: 11px; font-weight: 600; display: inline-block; }
+    .status-ejecutado { background: #d4edda; color: #155724; }
+    .status-draft { background: #fff3cd; color: #856404; }
+    .status-reviewed { background: #cce5ff; color: #004085; }
+    .status-default { background: #e2e3e5; color: #383d41; }
+
+    /* Detail View */
+    .detail-view { display: none; }
+    .detail-view.active { display: block; }
+    .summary-view.hidden { display: none; }
+    .store-header { background: #fff; border-radius: 8px; padding: 20px 24px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .store-name { font-size: 20px; font-weight: 700; color: #1a1a2e; }
+    .store-meta { font-size: 13px; color: #666; margin-top: 4px; }
+
+    /* Detail Table */
+    .detail-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 13px; margin-bottom: 16px; }
+    .detail-table th { background: #b8c4dc; color: #fff; padding: 10px 12px; text-align: left; font-weight: 600; }
+    .detail-table td { padding: 8px 12px; border-bottom: 1px solid #eee; vertical-align: top; }
+    .detail-table tr.area-header { background: #e8eaf6; }
+    .detail-table tr.area-header td { font-weight: 700; color: #1a1a2e; font-size: 14px; padding: 10px 12px; }
+    .detail-table tr.subtotal-row { background: #f1f3f5; }
+    .detail-table tr.subtotal-row td { font-weight: 700; border-top: 2px solid #333; }
+    .detail-table img { width: 50px; height: 50px; object-fit: cover; border-radius: 4px; cursor: pointer; }
+
+    /* Photos Gallery */
+    .photos-section { background: #fff; border-radius: 8px; padding: 16px 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .photos-section h3 { font-size: 14px; margin-bottom: 10px; }
+    .photos-grid { display: flex; gap: 8px; flex-wrap: wrap; }
+    .photos-grid img { width: 80px; height: 80px; object-fit: cover; border-radius: 6px; cursor: pointer; }
+
+    /* Image Preview */
+    .img-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 2000; align-items: center; justify-content: center; cursor: pointer; }
+    .img-modal.open { display: flex; }
+    .img-modal img { max-width: 90%; max-height: 90%; border-radius: 8px; }
+
+    /* Print Styles */
+    @media print {
+      body { background: #fff; }
+      .toolbar, .report-actions, .btn, .no-print { display: none !important; }
+      .header { background: #1a1a2e; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .content { max-width: 100%; margin: 0; padding: 0 10px; }
+      .summary-table th, .detail-table th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .summary-table tr.total-row { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .detail-table tr.area-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .status-pill { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .report-header, .store-header, .summary-table, .detail-table, .photos-section { box-shadow: none; border: 1px solid #ddd; }
+      .page-break { page-break-before: always; }
+      .detail-view.active { display: block !important; }
+      .photos-grid img { width: 60px; height: 60px; }
+    }
+
+    /* Print All mode */
+    .print-all-mode .summary-view { display: block !important; }
+    .print-all-mode .detail-view { display: block !important; }
+    .print-all-mode .detail-view { margin-top: 20px; }
+
+    @media (max-width: 768px) {
+      .header { padding: 12px 16px; }
+      .toolbar { padding: 8px 12px; gap: 8px; }
+      .month-chip { padding: 5px 10px; font-size: 11px; }
+      .content { padding: 0 8px; }
+      .summary-table { font-size: 12px; }
+      .summary-table th, .summary-table td { padding: 8px 8px; }
+      .detail-table { font-size: 12px; }
+      .report-actions { flex-wrap: wrap; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>Condensado Mensual</h1>
+    <div class="company">LANO DESARROLLOS Y SERVICIOS S.A. DE C.V.</div>
+  </div>
+</div>
+
+<div class="toolbar no-print">
+  <div class="year-nav">
+    <button onclick="changeYear(-1)">&lt;</button>
+    <span id="yearDisplay"></span>
+    <button onclick="changeYear(1)">&gt;</button>
+  </div>
+  <div class="month-chips" id="monthChips"></div>
+</div>
+
+<div class="content" id="content">
+  <div class="loading">Selecciona un mes para ver el condensado</div>
+</div>
+
+<!-- Image Preview -->
+<div class="img-modal" id="imgModal" onclick="this.classList.remove('open')">
+  <img id="imgPreview" src="">
+</div>
+
+<script>
+const MONTHS = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
+
+const state = {
+  year: new Date().getFullYear(),
+  month: new Date().getMonth() + 1,
+  data: null,
+  currentView: 'summary' // 'summary' or 'detail'
+};
+
+function init() {
+  renderToolbar();
+  loadCondensado();
+}
+
+function renderToolbar() {
+  document.getElementById('yearDisplay').textContent = state.year;
+  const chips = document.getElementById('monthChips');
+  chips.innerHTML = '';
+  MONTHS.forEach((m, i) => {
+    const chip = document.createElement('span');
+    chip.className = 'month-chip' + (i + 1 === state.month ? ' active' : '');
+    chip.textContent = m;
+    chip.onclick = () => { state.month = i + 1; renderToolbar(); loadCondensado(); };
+    chips.appendChild(chip);
+  });
+}
+
+function changeYear(delta) {
+  state.year += delta;
+  renderToolbar();
+  loadCondensado();
+}
+
+// ====== Load Data ======
+async function loadCondensado() {
+  const content = document.getElementById('content');
+  content.innerHTML = '<div class="loading">Cargando condensado...</div>';
+  state.currentView = 'summary';
+
+  try {
+    const resp = await fetch(`/api/condensado?year=${state.year}&month=${state.month}`);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error);
+    state.data = data;
+    renderSummary();
+  } catch (err) {
+    content.innerHTML = `<div class="loading" style="color:red">Error: ${esc(err.message)}</div>`;
+  }
+}
+
+// ====== Summary View ======
+function renderSummary() {
+  const d = state.data;
+  if (!d || d.stores.length === 0) {
+    document.getElementById('content').innerHTML = '<div class="loading">No hay cotizaciones para este mes</div>';
+    return;
+  }
+
+  let html = `
+    <div class="summary-view" id="summaryView">
+      <div class="report-header">
+        <div class="report-title">ESTATUS TRABAJOS MENSUALES - ${esc(d.month).toUpperCase()}</div>
+        <div class="report-subtitle">Cliente: UNDER ARMOUR &nbsp;|&nbsp; ${d.totalQuotes} cotizaciones &nbsp;|&nbsp; ${d.stores.length} tiendas</div>
+        <div class="report-actions no-print">
+          <button class="btn btn-pdf" onclick="window.print()">Descargar PDF</button>
+          <button class="btn btn-print-all" onclick="printAll()">Imprimir Todo (Detalle)</button>
+        </div>
+      </div>
+
+      <table class="summary-table">
+        <thead>
+          <tr>
+            <th>ACTIVIDAD</th>
+            <th>SUCURSAL</th>
+            <th>COTIZACIONES</th>
+            <th>COSTO</th>
+            <th>ESTATUS</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+
+  d.stores.forEach((store, i) => {
+    const mainStatus = getMajorityStatus(store.quotes);
+    html += `
+      <tr onclick="showDetail(${i})">
+        <td>${i === 0 ? 'MTTO GENERAL' : ''}</td>
+        <td>${esc(store.name)}</td>
+        <td>${store.quotes.length}</td>
+        <td>${money(store.totalCost)}</td>
+        <td>${statusPill(mainStatus)}</td>
+      </tr>
+    `;
+  });
+
+  html += `
+      <tr class="total-row">
+        <td colspan="3" style="text-align:right">TOTAL MANTENIMIENTO MENSUAL</td>
+        <td>${money(d.grandTotal)}</td>
+        <td></td>
+      </tr>
+      </tbody>
+    </table>
+    </div>
+  `;
+
+  // Pre-render all detail views for print-all
+  d.stores.forEach((store, i) => {
+    html += buildDetailHtml(store, i, d.month);
+  });
+
+  document.getElementById('content').innerHTML = html;
+}
+
+// ====== Detail View ======
+function showDetail(storeIndex) {
+  const detail = document.getElementById('detail-' + storeIndex);
+  const summary = document.getElementById('summaryView');
+  if (!detail || !summary) return;
+
+  // Hide all details and summary
+  document.querySelectorAll('.detail-view').forEach(d => d.classList.remove('active'));
+  summary.classList.add('hidden');
+  detail.classList.add('active');
+  state.currentView = 'detail';
+  window.scrollTo(0, 0);
+}
+
+function showSummary() {
+  document.querySelectorAll('.detail-view').forEach(d => d.classList.remove('active'));
+  const summary = document.getElementById('summaryView');
+  if (summary) summary.classList.remove('hidden');
+  state.currentView = 'summary';
+  window.scrollTo(0, 0);
+}
+
+function buildDetailHtml(store, index, monthLabel) {
+  // Group line items by product (AREA)
+  const grouped = {};
+  store.lineItems.forEach(l => {
+    const area = l.product;
+    if (!grouped[area]) grouped[area] = [];
+    grouped[area].push(l);
+  });
+
+  let tableRows = '';
+  for (const [area, items] of Object.entries(grouped)) {
+    tableRows += `<tr class="area-header"><td colspan="7">${esc(area)}</td></tr>`;
+    items.forEach(item => {
+      tableRows += `
+        <tr>
+          <td style="padding-left:24px">${esc(item.subItem)}</td>
+          <td>${esc(item.descTrabajo || item.description)}</td>
+          <td>${item.foto ? `<img src="${esc(item.foto)}" onclick="showImage('${esc(item.foto)}')" alt="">` : ''}</td>
+          <td style="text-align:center">${item.quantity}</td>
+          <td style="text-align:right">${money(item.unitPrice)}</td>
+          <td style="text-align:right">${money(item.totalPrice)}</td>
+        </tr>
+      `;
+    });
+  }
+
+  // Collect all photos
+  const photos = store.lineItems.filter(l => l.foto).map(l => l.foto);
+
+  return `
+    <div class="detail-view page-break" id="detail-${index}">
+      <div class="store-header">
+        <button class="btn btn-back no-print" onclick="showSummary()" style="margin-bottom:12px">&larr; Volver al resumen</button>
+        <div style="font-size:12px;color:#888;margin-bottom:4px">LANO DESARROLLOS Y SERVICIOS S.A. DE C.V.</div>
+        <div class="store-name">${esc(store.name)}</div>
+        <div class="store-meta">
+          Obra: MANTENIMIENTO MENSUAL ${esc(monthLabel).toUpperCase()} &nbsp;|&nbsp;
+          Cliente: UNDER ARMOUR &nbsp;|&nbsp;
+          Cotizaciones: ${store.quotes.length} &nbsp;|&nbsp;
+          Total: ${money(store.totalCost)}
+        </div>
+        <div class="report-actions no-print" style="margin-top:8px">
+          <button class="btn btn-pdf" onclick="window.print()">Descargar PDF</button>
+        </div>
+      </div>
+
+      <table class="detail-table">
+        <thead>
+          <tr>
+            <th>Sub-Area</th>
+            <th>Concepto / Desc. Trabajo</th>
+            <th>Foto</th>
+            <th style="text-align:center">Cant.</th>
+            <th style="text-align:right">P. Unitario</th>
+            <th style="text-align:right">Importe</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tableRows}
+          <tr class="subtotal-row">
+            <td colspan="5" style="text-align:right">SUBTOTAL ${esc(store.name)}:</td>
+            <td style="text-align:right">${money(store.totalCost)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      ${photos.length > 0 ? `
+        <div class="photos-section">
+          <h3>Evidencia Fotografica (${photos.length})</h3>
+          <div class="photos-grid">
+            ${photos.map(p => `<img src="${esc(p)}" onclick="showImage('${esc(p)}')" alt="">`).join('')}
+          </div>
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+// ====== Print All ======
+function printAll() {
+  // Show all detail views for printing
+  document.querySelectorAll('.detail-view').forEach(d => d.classList.add('active'));
+  const summary = document.getElementById('summaryView');
+  if (summary) summary.classList.remove('hidden');
+  document.body.classList.add('print-all-mode');
+
+  setTimeout(() => {
+    window.print();
+    // Restore after print
+    setTimeout(() => {
+      document.body.classList.remove('print-all-mode');
+      if (state.currentView === 'summary') {
+        document.querySelectorAll('.detail-view').forEach(d => d.classList.remove('active'));
+      } else {
+        showSummary();
+      }
+    }, 500);
+  }, 100);
+}
+
+// ====== Helpers ======
+function showImage(url) {
+  document.getElementById('imgPreview').src = url;
+  document.getElementById('imgModal').classList.add('open');
+}
+
+function esc(str) {
+  const d = document.createElement('div');
+  d.textContent = str || '';
+  return d.innerHTML;
+}
+
+function money(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return '$0.00';
+  return '$' + x.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function getMajorityStatus(quotes) {
+  if (!quotes.length) return 'Draft';
+  const counts = {};
+  quotes.forEach(q => { counts[q.status] = (counts[q.status] || 0) + 1; });
+  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+}
+
+function statusPill(status) {
+  const s = (status || '').toLowerCase();
+  let cls = 'status-default';
+  let label = status;
+  if (s === 'draft') { cls = 'status-draft'; label = 'Draft'; }
+  else if (s === 'reviewed' || s === 'accepted') { cls = 'status-reviewed'; label = status; }
+  else if (s.includes('ejecutado') || s.includes('approved')) { cls = 'status-ejecutado'; label = 'EJECUTADO'; }
+  return `<span class="status-pill ${cls}">${esc(label)}</span>`;
+}
+
+function formatDate(isoStr) {
+  if (!isoStr) return '—';
+  const d = new Date(isoStr);
+  return d.toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+init();
+</script>
+</body>
+</html>
