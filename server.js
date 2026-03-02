@@ -57,15 +57,15 @@ app.get('/api/condensado', async (req, res) => {
       const linesResult = await conn.query(`
         SELECT Id, UnitPrice, Quantity, TotalPrice, Discount,
           Foto_2__c, Sub_ITEM__c, Description, Descripcion_trabajo__c,
-          aprobado__c,
+          Aprobado__c,
           PricebookEntry.Name, PricebookEntry.Product2.Name
         FROM QuoteLineItem
         WHERE QuoteId = '${escapeSOQLString(quote.Id)}'
       `);
 
-      // DEBUG: log aprobado__c values
+      // DEBUG: log Aprobado__c values
       (linesResult.records || []).forEach(l => {
-        console.log(`[aprobado__c] QuoteLineItem ${l.Id} => ${JSON.stringify(l.aprobado__c)}`);
+        console.log(`[Aprobado__c] QuoteLineItem ${l.Id} => ${JSON.stringify(l.Aprobado__c)}`);
       });
 
       const lineItems = (linesResult.records || []).map(l => ({
@@ -80,7 +80,7 @@ app.get('/api/condensado', async (req, res) => {
         unitPrice: Number(l.UnitPrice || 0),
         totalPrice: Number(l.TotalPrice || 0),
         discount: Number(l.Discount || 0),
-        aprobado: l.aprobado__c != null ? l.aprobado__c : null
+        aprobado: l.Aprobado__c != null ? l.Aprobado__c : null
       }));
 
       if (!storeMap[storeName]) {
