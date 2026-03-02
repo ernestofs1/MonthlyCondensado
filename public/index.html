@@ -171,7 +171,8 @@ const state = {
   month: new Date().getMonth() + 1,
   data: null,
   currentView: 'summary', // 'summary' or 'detail'
-  additionals: []
+  additionals: [],
+  statusOverrides: {}
 };
 
 function init() {
@@ -248,14 +249,14 @@ function renderSummary() {
   `;
 
   d.stores.forEach((store, i) => {
-    const mainStatus = getMajorityStatus(store.quotes);
+    const mainStatus = state.statusOverrides[i] !== undefined ? state.statusOverrides[i] : getMajorityStatus(store.quotes);
     html += `
       <tr onclick="showDetail(${i})">
         <td>${i === 0 ? 'MTTO GENERAL' : ''}</td>
         <td>${esc(store.name)}</td>
         <td>${store.quotes.length}</td>
         <td>${money(store.totalCost)}</td>
-        <td>${statusPill(mainStatus)}</td>
+        <td id="status-cell-${i}" onclick="event.stopPropagation()">${renderStatusCell(i, mainStatus)}</td>
       </tr>
     `;
   });
@@ -356,6 +357,11 @@ function buildDetailHtml(store, index, monthLabel) {
   for (const [area, items] of Object.entries(grouped)) {
     tableRows += `<tr class="area-header"><td colspan="7">${esc(area)}</td></tr>`;
     items.forEach(item => {
+      const aprobadoHtml = item.aprobado === true || item.aprobado === 'true'
+        ? `<span style="color:#155724;font-weight:700;font-size:14px">&#10003;</span>`
+        : item.aprobado === false || item.aprobado === 'false'
+          ? `<span style="color:#721c24;font-weight:700;font-size:14px">&#10007;</span>`
+          : `<span style="color:#aaa;font-size:12px">—</span>`;
       tableRows += `
         <tr>
           <td style="padding-left:24px">${esc(item.subItem)}</td>
@@ -364,6 +370,7 @@ function buildDetailHtml(store, index, monthLabel) {
           <td style="text-align:center">${item.quantity}</td>
           <td style="text-align:right">${money(item.unitPrice)}</td>
           <td style="text-align:right">${money(item.totalPrice)}</td>
+          <td style="text-align:center">${aprobadoHtml}</td>
         </tr>
       `;
     });
@@ -398,12 +405,13 @@ function buildDetailHtml(store, index, monthLabel) {
             <th style="text-align:center">Cant.</th>
             <th style="text-align:right">P. Unitario</th>
             <th style="text-align:right">Importe</th>
+            <th style="text-align:center">Aprobado</th>
           </tr>
         </thead>
         <tbody>
           ${tableRows}
           <tr class="subtotal-row">
-            <td colspan="5" style="text-align:right">SUBTOTAL ${esc(store.name)}:</td>
+            <td colspan="6" style="text-align:right">SUBTOTAL ${esc(store.name)}:</td>
             <td style="text-align:right">${money(store.totalCost)}</td>
           </tr>
         </tbody>
@@ -481,6 +489,43 @@ function formatDate(isoStr) {
   if (!isoStr) return '—';
   const d = new Date(isoStr);
   return d.toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+// ====== Status Edit ======
+function renderStatusCell(storeIndex, status) {
+  return `
+    <div style="display:flex;align-items:center;gap:6px">
+      ${statusPill(status)}
+      <span class="no-print" onclick="editStatus(${storeIndex})" title="Cambiar estatus"
+        style="cursor:pointer;font-size:11px;color:#aaa;padding:1px 5px;border:1px solid #ddd;border-radius:4px;user-select:none">✏</span>
+    </div>`;
+}
+
+function editStatus(storeIndex) {
+  const cell = document.getElementById('status-cell-' + storeIndex);
+  if (!cell) return;
+  const store = state.data.stores[storeIndex];
+  const current = state.statusOverrides[storeIndex] !== undefined
+    ? state.statusOverrides[storeIndex]
+    : getMajorityStatus(store.quotes);
+  const s = (current || '').toLowerCase();
+  const isDraft     = s === 'draft';
+  const isCompleted = s === 'reviewed' || s === 'accepted';
+  const isEjec      = s.includes('ejecutado') || s.includes('approved');
+  cell.innerHTML = `
+    <select onchange="saveStatus(${storeIndex}, this.value)"
+      style="padding:5px 8px;border:1px solid #ccc;border-radius:6px;font-size:12px;cursor:pointer">
+      <option value="Draft"    ${isDraft     ? 'selected' : ''}>Draft</option>
+      <option value="Reviewed" ${isCompleted ? 'selected' : ''}>COMPLETADO</option>
+      <option value="Ejecutado"${isEjec      ? 'selected' : ''}>EJECUTADO</option>
+    </select>`;
+  cell.querySelector('select').focus();
+}
+
+function saveStatus(storeIndex, newStatus) {
+  state.statusOverrides[storeIndex] = newStatus;
+  const cell = document.getElementById('status-cell-' + storeIndex);
+  if (cell) cell.innerHTML = renderStatusCell(storeIndex, newStatus);
 }
 
 // ====== Adicionales ======
