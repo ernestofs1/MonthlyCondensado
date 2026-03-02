@@ -75,7 +75,7 @@ app.get('/api/condensado', async (req, res) => {
         unitPrice: Number(l.UnitPrice || 0),
         totalPrice: Number(l.TotalPrice || 0),
         discount: Number(l.Discount || 0),
-        aprobado: l.aprobado__c || ''
+        aprobado: l.aprobado__c != null ? l.aprobado__c : null
       }));
 
       if (!storeMap[storeName]) {
