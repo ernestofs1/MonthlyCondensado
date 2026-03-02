@@ -95,6 +95,7 @@
       .page-break { page-break-before: always; }
       .detail-view.active { display: block !important; }
       .photos-grid img { width: 60px; height: 60px; }
+      .price-input, .no-print { display: none !important; }
     }
 
     /* Print All mode */
@@ -104,6 +105,11 @@
     /* Hide images in print-all to prevent preview from hanging on external URLs */
     .print-all-mode img,
     .print-all-mode .photos-section { display: none !important; }
+
+    /* Editable price cell */
+    .price-editable { cursor: pointer; }
+    .price-editable:hover { background: #fffde7 !important; outline: 2px dashed #f0ad00; outline-offset: -2px; }
+    @media print { .price-editable { cursor: default; outline: none; } }
 
     /* Adicionales Section */
     .additionals-section { background: #fff; border-radius: 8px; padding: 20px 24px; margin-top: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
@@ -172,7 +178,8 @@ const state = {
   data: null,
   currentView: 'summary', // 'summary' or 'detail'
   additionals: [],
-  statusOverrides: {}
+  statusOverrides: {},
+  priceOverrides: {}
 };
 
 function init() {
@@ -204,6 +211,8 @@ async function loadCondensado() {
   const content = document.getElementById('content');
   content.innerHTML = '<div class="loading">Cargando condensado...</div>';
   state.currentView = 'summary';
+  state.statusOverrides = {};
+  state.priceOverrides = {};
 
   try {
     const resp = await fetch(`/api/condensado?year=${state.year}&month=${state.month}`);
@@ -230,7 +239,7 @@ function renderSummary() {
         <div class="report-title">ESTATUS TRABAJOS MENSUALES - ${esc(d.month).toUpperCase()}</div>
         <div class="report-subtitle">Cliente: UNDER ARMOUR &nbsp;|&nbsp; ${d.totalQuotes} cotizaciones &nbsp;|&nbsp; ${d.stores.length} tiendas</div>
         <div class="report-actions no-print">
-          <button class="btn btn-pdf" onclick="window.print()">Descargar PDF</button>
+          <button class="btn btn-pdf" onclick="closeAllEdits();window.print()">Descargar PDF</button>
           <button class="btn btn-print-all" onclick="printAll()">Imprimir Todo (Detalle, sin fotos)</button>
         </div>
       </div>
@@ -255,7 +264,7 @@ function renderSummary() {
         <td>${i === 0 ? 'MTTO GENERAL' : ''}</td>
         <td>${esc(store.name)}</td>
         <td>${store.quotes.length}</td>
-        <td>${money(store.totalCost)}</td>
+        <td id="summary-cost-${i}">${money(getStoreApprovedTotal(i))}</td>
         <td id="status-cell-${i}" onclick="event.stopPropagation()">${renderStatusCell(i, mainStatus)}</td>
       </tr>
     `;
@@ -264,7 +273,7 @@ function renderSummary() {
   html += `
       <tr class="total-row">
         <td colspan="3" style="text-align:right">TOTAL MANTENIMIENTO MENSUAL</td>
-        <td>${money(d.grandTotal)}</td>
+        <td id="grand-total-amount">${money(computeGrandTotal())}</td>
         <td></td>
       </tr>
       </tbody>
@@ -357,28 +366,40 @@ function buildDetailHtml(store, index, monthLabel) {
   for (const [area, items] of Object.entries(grouped)) {
     tableRows += `<tr class="area-header"><td colspan="7">${esc(area)}</td></tr>`;
     items.forEach(item => {
-      // DEBUG: show raw value so we can see what Salesforce is actually sending
-      const _rawApr = item.aprobado;
-      const _aprStr = (_rawApr === null || _rawApr === undefined) ? 'NULL' : String(_rawApr);
-      const _aprLow = _aprStr.trim().toLowerCase();
+      const _aprLow = (item.aprobado === null || item.aprobado === undefined) ? '' : String(item.aprobado).trim().toLowerCase();
+      const isNo = _aprLow === 'no' || _aprLow === 'false';
       const aprobadoHtml = (_aprLow === 'si' || _aprLow === 'true')
         ? `<span style="color:#155724;font-weight:700;font-size:14px">&#10003; Si</span>`
-        : (_aprLow === 'no' || _aprLow === 'false')
+        : isNo
           ? `<span style="color:#721c24;font-weight:700;font-size:14px">&#10007; No</span>`
-          : `<span style="color:#e65c00;font-size:11px">[${_aprStr}]</span>`;
+          : `<span style="color:#aaa;font-size:12px">—</span>`;
+      const displayUnitPrice = state.priceOverrides[item.id] !== undefined ? state.priceOverrides[item.id] : item.unitPrice;
+      const displayTotal = displayUnitPrice * item.quantity;
+      const rowStyle = isNo ? 'opacity:0.45;background:#fff5f5;text-decoration:line-through;' : '';
       tableRows += `
-        <tr>
+        <tr style="${rowStyle}">
           <td style="padding-left:24px">${esc(item.subItem)}</td>
           <td>${esc(item.descTrabajo || item.description)}</td>
           <td>${item.foto ? `<img src="${esc(item.foto)}" onclick="showImage('${esc(item.foto)}')" alt="">` : ''}</td>
           <td style="text-align:center">${item.quantity}</td>
-          <td style="text-align:right">${money(item.unitPrice)}</td>
-          <td style="text-align:right">${money(item.totalPrice)}</td>
+          <td id="price-cell-${item.id}" class="price-editable" style="text-align:right"
+            onclick="editPrice('${item.id}',${item.quantity},${index},${displayUnitPrice})"
+            title="Clic para editar precio">
+            ${money(displayUnitPrice)}
+          </td>
+          <td id="total-cell-${item.id}" style="text-align:right">${money(displayTotal)}</td>
           <td style="text-align:center">${aprobadoHtml}</td>
         </tr>
       `;
     });
   }
+
+  const approvedSubtotal = store.lineItems.reduce((sum, item) => {
+    const _a = (item.aprobado === null || item.aprobado === undefined) ? '' : String(item.aprobado).trim().toLowerCase();
+    if (_a === 'no' || _a === 'false') return sum;
+    const up = state.priceOverrides[item.id] !== undefined ? state.priceOverrides[item.id] : item.unitPrice;
+    return sum + up * item.quantity;
+  }, 0);
 
   // Collect all photos
   const photos = store.lineItems.filter(l => l.foto).map(l => l.foto);
@@ -393,10 +414,10 @@ function buildDetailHtml(store, index, monthLabel) {
           Obra: MANTENIMIENTO MENSUAL ${esc(monthLabel).toUpperCase()} &nbsp;|&nbsp;
           Cliente: UNDER ARMOUR &nbsp;|&nbsp;
           Cotizaciones: ${store.quotes.length} &nbsp;|&nbsp;
-          Total: ${money(store.totalCost)}
+          Total: <span id="store-header-total-${index}">${money(approvedSubtotal)}</span>
         </div>
         <div class="report-actions no-print" style="margin-top:8px">
-          <button class="btn btn-pdf" onclick="window.print()">Descargar PDF</button>
+          <button class="btn btn-pdf" onclick="closeAllEdits();window.print()">Descargar PDF</button>
         </div>
       </div>
 
@@ -416,7 +437,7 @@ function buildDetailHtml(store, index, monthLabel) {
           ${tableRows}
           <tr class="subtotal-row">
             <td colspan="6" style="text-align:right">SUBTOTAL ${esc(store.name)}:</td>
-            <td style="text-align:right">${money(store.totalCost)}</td>
+            <td style="text-align:right" id="subtotal-amount-${index}">${money(approvedSubtotal)}</td>
           </tr>
         </tbody>
       </table>
@@ -435,6 +456,7 @@ function buildDetailHtml(store, index, monthLabel) {
 
 // ====== Print All ======
 function printAll() {
+  closeAllEdits();
   document.querySelectorAll('.detail-view').forEach(d => d.classList.add('active'));
   const summary = document.getElementById('summaryView');
   if (summary) summary.classList.remove('hidden');
@@ -493,6 +515,71 @@ function formatDate(isoStr) {
   if (!isoStr) return '—';
   const d = new Date(isoStr);
   return d.toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+// ====== Approved Total Helpers ======
+function getStoreApprovedTotal(storeIndex) {
+  const store = state.data && state.data.stores[storeIndex];
+  if (!store) return 0;
+  return store.lineItems.reduce((sum, item) => {
+    const _a = (item.aprobado === null || item.aprobado === undefined) ? '' : String(item.aprobado).trim().toLowerCase();
+    if (_a === 'no' || _a === 'false') return sum;
+    const up = state.priceOverrides[item.id] !== undefined ? state.priceOverrides[item.id] : item.unitPrice;
+    return sum + up * item.quantity;
+  }, 0);
+}
+
+function computeGrandTotal() {
+  if (!state.data) return 0;
+  return state.data.stores.reduce((sum, _, i) => sum + getStoreApprovedTotal(i), 0);
+}
+
+function updateTotals(storeIndex) {
+  const el = document.getElementById('subtotal-amount-' + storeIndex);
+  const t = getStoreApprovedTotal(storeIndex);
+  if (el) el.textContent = money(t);
+  const hdr = document.getElementById('store-header-total-' + storeIndex);
+  if (hdr) hdr.textContent = money(t);
+  const sc = document.getElementById('summary-cost-' + storeIndex);
+  if (sc) sc.textContent = money(t);
+  const grand = document.getElementById('grand-total-amount');
+  if (grand) grand.textContent = money(computeGrandTotal());
+}
+
+// ====== Price Edit ======
+function editPrice(itemId, quantity, storeIndex, currentPrice) {
+  const cell = document.getElementById('price-cell-' + itemId);
+  if (!cell) return;
+  cell.innerHTML = `<input type="number" class="price-input" value="${currentPrice}" min="0" step="0.01"
+    data-item-id="${itemId}" data-quantity="${quantity}" data-store-index="${storeIndex}"
+    style="width:85px;padding:4px 6px;border:1px solid #1a1a2e;border-radius:4px;font-size:12px;text-align:right"
+    onblur="savePrice('${itemId}',${quantity},${storeIndex},this.value)"
+    onkeydown="if(event.key==='Enter')this.blur()" />`;
+  const inp = cell.querySelector('input');
+  inp.focus();
+  inp.select();
+}
+
+function savePrice(itemId, quantity, storeIndex, newValue) {
+  const newPrice = Math.max(0, parseFloat(newValue) || 0);
+  state.priceOverrides[itemId] = newPrice;
+  const cell = document.getElementById('price-cell-' + itemId);
+  if (cell) {
+    cell.className = 'price-editable';
+    cell.style.textAlign = 'right';
+    cell.title = 'Clic para editar precio';
+    cell.onclick = () => editPrice(itemId, quantity, storeIndex, newPrice);
+    cell.innerHTML = money(newPrice);
+  }
+  const totalCell = document.getElementById('total-cell-' + itemId);
+  if (totalCell) totalCell.textContent = money(newPrice * quantity);
+  updateTotals(storeIndex);
+}
+
+function closeAllEdits() {
+  document.querySelectorAll('.price-input').forEach(inp => {
+    savePrice(inp.dataset.itemId, Number(inp.dataset.quantity), Number(inp.dataset.storeIndex), inp.value);
+  });
 }
 
 // ====== Status Edit ======
