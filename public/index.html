@@ -48,6 +48,7 @@
     .status-pill { padding: 2px 10px; border-radius: 10px; font-size: 11px; font-weight: 600; display: inline-block; }
     .status-ejecutado { background: #d4edda; color: #155724; }
     .status-draft { background: #fff3cd; color: #856404; }
+    .status-completado { background: #fff3cd; color: #856404; }
     .status-reviewed { background: #cce5ff; color: #004085; }
     .status-default { background: #e2e3e5; color: #383d41; }
 
@@ -101,6 +102,25 @@
     .print-all-mode .detail-view { display: block !important; }
     .print-all-mode .detail-view { margin-top: 20px; }
 
+    /* Adicionales Section */
+    .additionals-section { background: #fff; border-radius: 8px; padding: 20px 24px; margin-top: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .additionals-section h3 { font-size: 15px; font-weight: 700; color: #1a1a2e; margin-bottom: 12px; border-bottom: 2px solid #1a1a2e; padding-bottom: 8px; }
+    .additionals-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }
+    .additionals-form label { font-size: 11px; font-weight: 600; color: #555; display: block; margin-bottom: 3px; }
+    .additionals-form .form-field { display: flex; flex-direction: column; }
+    .additionals-form select, .additionals-form input { padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; }
+    .additionals-form select { min-width: 180px; }
+    .additionals-form input[type="text"] { min-width: 200px; }
+    .additionals-form input[type="number"] { width: 130px; }
+    .btn-add { background: #28a745; color: #fff; margin-top: 18px; }
+    .btn-add:hover { background: #218838; }
+    .additionals-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+    .additionals-table th { background: #1a1a2e; color: #fff; padding: 10px 12px; text-align: left; font-weight: 600; }
+    .additionals-table td { padding: 8px 12px; border-bottom: 1px solid #eee; vertical-align: middle; }
+    .additionals-table tfoot td { font-weight: 700; border-top: 2px solid #333; background: #f1f3f5; }
+    .btn-remove { background: #dc3545; color: #fff; padding: 3px 9px; font-size: 12px; border-radius: 4px; }
+    .btn-remove:hover { background: #c82333; }
+
     @media (max-width: 768px) {
       .header { padding: 12px 16px; }
       .toolbar { padding: 8px 12px; gap: 8px; }
@@ -147,7 +167,8 @@ const state = {
   year: new Date().getFullYear(),
   month: new Date().getMonth() + 1,
   data: null,
-  currentView: 'summary' // 'summary' or 'detail'
+  currentView: 'summary', // 'summary' or 'detail'
+  additionals: []
 };
 
 function init() {
@@ -244,6 +265,48 @@ function renderSummary() {
       </tr>
       </tbody>
     </table>
+
+    <div class="additionals-section">
+      <h3>PRODUCTOS ADICIONALES</h3>
+      <div class="additionals-form no-print">
+        <div class="form-field">
+          <label>Tienda</label>
+          <select id="addStore">
+            <option value="">-- Seleccionar --</option>
+            ${d.stores.map(s => `<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Concepto</label>
+          <input type="text" id="addConcept" placeholder="Descripción del concepto" />
+        </div>
+        <div class="form-field">
+          <label>Importe</label>
+          <input type="number" id="addAmount" placeholder="0.00" min="0" step="0.01" />
+        </div>
+        <button class="btn btn-add" onclick="addAdditional()">+ Agregar</button>
+      </div>
+      <table class="additionals-table">
+        <thead>
+          <tr>
+            <th>Tienda</th>
+            <th>Concepto</th>
+            <th style="text-align:right">Importe</th>
+            <th class="no-print" style="width:50px"></th>
+          </tr>
+        </thead>
+        <tbody id="additionalsBody">
+          <tr><td colspan="4" style="text-align:center;color:#888;padding:16px">Sin adicionales agregados</td></tr>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2" style="text-align:right">TOTAL ADICIONALES:</td>
+            <td style="text-align:right" id="additionalsTotal">$0.00</td>
+            <td class="no-print"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
     </div>
   `;
 
@@ -357,24 +420,23 @@ function buildDetailHtml(store, index, monthLabel) {
 
 // ====== Print All ======
 function printAll() {
-  // Show all detail views for printing
   document.querySelectorAll('.detail-view').forEach(d => d.classList.add('active'));
   const summary = document.getElementById('summaryView');
   if (summary) summary.classList.remove('hidden');
   document.body.classList.add('print-all-mode');
 
-  setTimeout(() => {
-    window.print();
-    // Restore after print
-    setTimeout(() => {
-      document.body.classList.remove('print-all-mode');
-      if (state.currentView === 'summary') {
-        document.querySelectorAll('.detail-view').forEach(d => d.classList.remove('active'));
-      } else {
-        showSummary();
-      }
-    }, 500);
-  }, 100);
+  function restoreAfterPrint() {
+    window.removeEventListener('afterprint', restoreAfterPrint);
+    document.body.classList.remove('print-all-mode');
+    if (state.currentView === 'summary') {
+      document.querySelectorAll('.detail-view').forEach(d => d.classList.remove('active'));
+    } else {
+      showSummary();
+    }
+  }
+
+  window.addEventListener('afterprint', restoreAfterPrint);
+  setTimeout(() => window.print(), 300);
 }
 
 // ====== Helpers ======
@@ -407,7 +469,7 @@ function statusPill(status) {
   let cls = 'status-default';
   let label = status;
   if (s === 'draft') { cls = 'status-draft'; label = 'Draft'; }
-  else if (s === 'reviewed' || s === 'accepted') { cls = 'status-reviewed'; label = status; }
+  else if (s === 'reviewed' || s === 'accepted') { cls = 'status-completado'; label = 'COMPLETADO'; }
   else if (s.includes('ejecutado') || s.includes('approved')) { cls = 'status-ejecutado'; label = 'EJECUTADO'; }
   return `<span class="status-pill ${cls}">${esc(label)}</span>`;
 }
@@ -416,6 +478,51 @@ function formatDate(isoStr) {
   if (!isoStr) return '—';
   const d = new Date(isoStr);
   return d.toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+// ====== Adicionales ======
+function addAdditional() {
+  const store = document.getElementById('addStore').value;
+  const concept = document.getElementById('addConcept').value.trim();
+  const amount = parseFloat(document.getElementById('addAmount').value);
+  if (!store || !concept || isNaN(amount) || amount <= 0) {
+    alert('Por favor completa todos los campos: tienda, concepto e importe.');
+    return;
+  }
+  state.additionals.push({ store, concept, amount });
+  document.getElementById('addConcept').value = '';
+  document.getElementById('addAmount').value = '';
+  renderAdditionals();
+}
+
+function removeAdditional(i) {
+  state.additionals.splice(i, 1);
+  renderAdditionals();
+}
+
+function renderAdditionals() {
+  const tbody = document.getElementById('additionalsBody');
+  const totalEl = document.getElementById('additionalsTotal');
+  if (!tbody) return;
+  let total = 0;
+  if (state.additionals.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#888;padding:16px">Sin adicionales agregados</td></tr>';
+    if (totalEl) totalEl.textContent = money(0);
+    return;
+  }
+  let rows = '';
+  state.additionals.forEach((item, i) => {
+    total += item.amount;
+    rows += `
+      <tr>
+        <td>${esc(item.store)}</td>
+        <td>${esc(item.concept)}</td>
+        <td style="text-align:right">${money(item.amount)}</td>
+        <td class="no-print" style="text-align:center"><button class="btn btn-remove" onclick="removeAdditional(${i})">✕</button></td>
+      </tr>`;
+  });
+  tbody.innerHTML = rows;
+  if (totalEl) totalEl.textContent = money(total);
 }
 
 init();
