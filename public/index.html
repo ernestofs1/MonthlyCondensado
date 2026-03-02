@@ -357,15 +357,15 @@ function buildDetailHtml(store, index, monthLabel) {
   for (const [area, items] of Object.entries(grouped)) {
     tableRows += `<tr class="area-header"><td colspan="7">${esc(area)}</td></tr>`;
     items.forEach(item => {
-      const _apr = (item.aprobado === true || item.aprobado === 'true') ? true
-        : (item.aprobado === false || item.aprobado === 'false') ? false
-        : typeof item.aprobado === 'string' ? item.aprobado.trim().toLowerCase() === 'si' ? true : item.aprobado.trim().toLowerCase() === 'no' ? false : null
-        : null;
-      const aprobadoHtml = _apr === true
+      // DEBUG: show raw value so we can see what Salesforce is actually sending
+      const _rawApr = item.aprobado;
+      const _aprStr = (_rawApr === null || _rawApr === undefined) ? 'NULL' : String(_rawApr);
+      const _aprLow = _aprStr.trim().toLowerCase();
+      const aprobadoHtml = (_aprLow === 'si' || _aprLow === 'true')
         ? `<span style="color:#155724;font-weight:700;font-size:14px">&#10003; Si</span>`
-        : _apr === false
+        : (_aprLow === 'no' || _aprLow === 'false')
           ? `<span style="color:#721c24;font-weight:700;font-size:14px">&#10007; No</span>`
-          : `<span style="color:#aaa;font-size:12px">—</span>`;
+          : `<span style="color:#e65c00;font-size:11px">[${_aprStr}]</span>`;
       tableRows += `
         <tr>
           <td style="padding-left:24px">${esc(item.subItem)}</td>

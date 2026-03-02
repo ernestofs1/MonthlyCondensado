@@ -63,6 +63,11 @@ app.get('/api/condensado', async (req, res) => {
         WHERE QuoteId = '${escapeSOQLString(quote.Id)}'
       `);
 
+      // DEBUG: log aprobado__c values
+      (linesResult.records || []).forEach(l => {
+        console.log(`[aprobado__c] QuoteLineItem ${l.Id} => ${JSON.stringify(l.aprobado__c)}`);
+      });
+
       const lineItems = (linesResult.records || []).map(l => ({
         id: l.Id,
         product: (l.PricebookEntry && l.PricebookEntry.Product2 && l.PricebookEntry.Product2.Name)
