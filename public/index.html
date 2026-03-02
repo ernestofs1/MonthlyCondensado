@@ -179,7 +179,8 @@ const state = {
   currentView: 'summary', // 'summary' or 'detail'
   additionals: [],
   statusOverrides: {},
-  priceOverrides: {}
+  priceOverrides: {},
+  additionalPhotos: {}
 };
 
 function init() {
@@ -213,6 +214,7 @@ async function loadCondensado() {
   state.currentView = 'summary';
   state.statusOverrides = {};
   state.priceOverrides = {};
+  state.additionalPhotos = {};
 
   try {
     const resp = await fetch(`/api/condensado?year=${state.year}&month=${state.month}`);
@@ -450,6 +452,21 @@ function buildDetailHtml(store, index, monthLabel) {
           </div>
         </div>
       ` : ''}
+
+      <div class="photos-section" id="added-photos-section-${index}">
+        <h3>Fotos Adicionales</h3>
+        <div class="no-print" style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+          <label style="cursor:pointer;background:#17a2b8;color:#fff;padding:7px 16px;border-radius:6px;font-size:13px;font-weight:600;display:inline-block">
+            📷 Subir Foto
+            <input type="file" accept="image/jpeg,image/png" style="display:none"
+              onchange="uploadPhoto(${index}, this)">
+          </label>
+          <span id="upload-status-${index}" style="font-size:12px;color:#555"></span>
+        </div>
+        <div id="added-photos-grid-${index}" class="photos-grid">
+          <span style="color:#aaa;font-size:12px" class="no-print">Sin fotos adicionales</span>
+        </div>
+      </div>
     </div>
   `;
 }
@@ -617,6 +634,60 @@ function saveStatus(storeIndex, newStatus) {
   state.statusOverrides[storeIndex] = newStatus;
   const cell = document.getElementById('status-cell-' + storeIndex);
   if (cell) cell.innerHTML = renderStatusCell(storeIndex, newStatus);
+}
+
+// ====== Photo Upload ======
+async function uploadPhoto(storeIndex, input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (!['image/jpeg', 'image/png'].includes(file.type)) {
+    alert('Solo se permiten archivos JPG o PNG.');
+    input.value = '';
+    return;
+  }
+  const statusEl = document.getElementById('upload-status-' + storeIndex);
+  if (statusEl) statusEl.textContent = '⏳ Subiendo...';
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    const resp = await fetch('https://uploadimagefunc-0004c976cbaa.herokuapp.com/upload', {
+      method: 'POST',
+      body: formData
+    });
+    const result = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(result.message || 'Error al subir');
+    if (!state.additionalPhotos[storeIndex]) state.additionalPhotos[storeIndex] = [];
+    state.additionalPhotos[storeIndex].push(result.url);
+    if (statusEl) { statusEl.textContent = '✓ Foto agregada'; setTimeout(() => { statusEl.textContent = ''; }, 3000); }
+    renderAddedPhotos(storeIndex);
+  } catch (err) {
+    if (statusEl) statusEl.textContent = '❌ ' + err.message;
+  }
+  input.value = '';
+}
+
+function removeAddedPhoto(storeIndex, photoIndex) {
+  if (state.additionalPhotos[storeIndex]) {
+    state.additionalPhotos[storeIndex].splice(photoIndex, 1);
+    renderAddedPhotos(storeIndex);
+  }
+}
+
+function renderAddedPhotos(storeIndex) {
+  const grid = document.getElementById('added-photos-grid-' + storeIndex);
+  if (!grid) return;
+  const photos = state.additionalPhotos[storeIndex] || [];
+  if (photos.length === 0) {
+    grid.innerHTML = '<span style="color:#aaa;font-size:12px" class="no-print">Sin fotos adicionales</span>';
+    return;
+  }
+  grid.innerHTML = photos.map((url, i) => `
+    <div style="position:relative;display:inline-block;margin:4px">
+      <img src="${esc(url)}" onclick="showImage('${esc(url)}')" alt=""
+        style="width:80px;height:80px;object-fit:cover;border-radius:6px;cursor:pointer;display:block">
+      <button class="no-print" onclick="removeAddedPhoto(${storeIndex},${i})"
+        style="position:absolute;top:-6px;right:-6px;background:#dc3545;color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;line-height:1">✕</button>
+    </div>`).join('');
 }
 
 // ====== Adicionales ======
