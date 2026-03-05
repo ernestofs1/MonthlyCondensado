@@ -293,11 +293,19 @@ function renderSummary() {
         </div>
         <div class="form-field">
           <label>Concepto</label>
-          <input type="text" id="addConcept" placeholder="Descripción del concepto" />
+          <input type="text" id="addConcept" placeholder="Ej: Pintura extra" />
         </div>
         <div class="form-field">
-          <label>Importe</label>
-          <input type="number" id="addAmount" placeholder="0.00" min="0" step="0.01" />
+          <label>Cantidad</label>
+          <input type="number" id="addQty" placeholder="0" min="0" step="0.01" />
+        </div>
+        <div class="form-field">
+          <label>Unidad</label>
+          <input type="text" id="addUnit" placeholder="m², pzas, hrs…" style="width:90px" />
+        </div>
+        <div class="form-field">
+          <label>Precio Unitario</label>
+          <input type="number" id="addUnitPrice" placeholder="0.00" min="0" step="0.01" />
         </div>
         <button class="btn btn-add" onclick="addAdditional()">+ Agregar</button>
       </div>
@@ -306,16 +314,18 @@ function renderSummary() {
           <tr>
             <th>Tienda</th>
             <th>Concepto</th>
+            <th style="text-align:right">Cantidad</th>
+            <th style="text-align:right">Precio Unit.</th>
             <th style="text-align:right">Importe</th>
             <th class="no-print" style="width:50px"></th>
           </tr>
         </thead>
         <tbody id="additionalsBody">
-          <tr><td colspan="4" style="text-align:center;color:#888;padding:16px">Sin adicionales agregados</td></tr>
+          <tr><td colspan="6" style="text-align:center;color:#888;padding:16px">Sin adicionales agregados</td></tr>
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="2" style="text-align:right">TOTAL ADICIONALES:</td>
+            <td colspan="4" style="text-align:right">TOTAL ADICIONALES:</td>
             <td style="text-align:right" id="additionalsTotal">$0.00</td>
             <td class="no-print"></td>
           </tr>
@@ -694,14 +704,19 @@ function renderAddedPhotos(storeIndex) {
 function addAdditional() {
   const store = document.getElementById('addStore').value;
   const concept = document.getElementById('addConcept').value.trim();
-  const amount = parseFloat(document.getElementById('addAmount').value);
-  if (!store || !concept || isNaN(amount) || amount <= 0) {
-    alert('Por favor completa todos los campos: tienda, concepto e importe.');
+  const qty = parseFloat(document.getElementById('addQty').value);
+  const unit = document.getElementById('addUnit').value.trim();
+  const unitPrice = parseFloat(document.getElementById('addUnitPrice').value);
+  if (!store || !concept || isNaN(qty) || qty <= 0 || isNaN(unitPrice) || unitPrice <= 0) {
+    alert('Por favor completa los campos: tienda, concepto, cantidad y precio unitario.');
     return;
   }
-  state.additionals.push({ store, concept, amount });
+  const amount = qty * unitPrice;
+  state.additionals.push({ store, concept, qty, unit, unitPrice, amount });
   document.getElementById('addConcept').value = '';
-  document.getElementById('addAmount').value = '';
+  document.getElementById('addQty').value = '';
+  document.getElementById('addUnit').value = '';
+  document.getElementById('addUnitPrice').value = '';
   renderAdditionals();
 }
 
@@ -716,17 +731,20 @@ function renderAdditionals() {
   if (!tbody) return;
   let total = 0;
   if (state.additionals.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#888;padding:16px">Sin adicionales agregados</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#888;padding:16px">Sin adicionales agregados</td></tr>';
     if (totalEl) totalEl.textContent = money(0);
     return;
   }
   let rows = '';
   state.additionals.forEach((item, i) => {
     total += item.amount;
+    const qtyLabel = item.unit ? `${item.qty} ${esc(item.unit)}` : item.qty;
     rows += `
       <tr>
         <td>${esc(item.store)}</td>
         <td>${esc(item.concept)}</td>
+        <td style="text-align:right">${qtyLabel}</td>
+        <td style="text-align:right">${money(item.unitPrice)}</td>
         <td style="text-align:right">${money(item.amount)}</td>
         <td class="no-print" style="text-align:center"><button class="btn btn-remove" onclick="removeAdditional(${i})">✕</button></td>
       </tr>`;
