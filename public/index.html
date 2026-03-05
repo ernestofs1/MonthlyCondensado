@@ -222,7 +222,12 @@ async function loadCondensado() {
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error);
     state.data = data;
+    const saved = localStorage.getItem(`additionals_${state.year}_${state.month}`);
+    if (saved) { try { state.additionals = JSON.parse(saved); } catch(e) {} }
     renderSummary();
+    if (state.additionals.length > 0) {
+      data.stores.forEach((_, i) => renderAdditionals(i));
+    }
   } catch (err) {
     content.innerHTML = `<div class="loading" style="color:red">Error: ${esc(err.message)}</div>`;
   }
@@ -448,6 +453,9 @@ function buildDetailHtml(store, index, monthLabel) {
             <input type="number" id="addUnitPrice-${index}" placeholder="0.00" min="0" step="0.01" />
           </div>
           <button class="btn btn-add" onclick="addAdditional(${index})">+ Agregar</button>
+          <button class="btn no-print" style="background:#28a745;color:#fff;font-weight:600"
+            onclick="saveAdditionals(${index})" id="saveBtn-${index}">💾 Guardar</button>
+          <span id="saveFeedback-${index}" style="font-size:12px;color:#28a745;font-weight:600;display:none">✓ Guardado</span>
         </div>
         <table class="additionals-table">
           <thead>
@@ -712,6 +720,12 @@ function addAdditional(storeIndex) {
   document.getElementById(`addUnit-${storeIndex}`).value = '';
   document.getElementById(`addUnitPrice-${storeIndex}`).value = '';
   renderAdditionals(storeIndex);
+}
+
+function saveAdditionals(storeIndex) {
+  localStorage.setItem(`additionals_${state.year}_${state.month}`, JSON.stringify(state.additionals));
+  const fb = document.getElementById(`saveFeedback-${storeIndex}`);
+  if (fb) { fb.style.display = 'inline'; setTimeout(() => fb.style.display = 'none', 2000); }
 }
 
 function removeAdditional(i, storeIndex) {
