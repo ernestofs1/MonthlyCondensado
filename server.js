@@ -130,6 +130,38 @@ app.get('/api/condensado', async (req, res) => {
   }
 });
 
+// ====== API: POST /api/update-prices ======
+app.post('/api/update-prices', async (req, res) => {
+  const { updates } = req.body;
+  if (!Array.isArray(updates) || updates.length === 0) {
+    return res.status(400).json({ error: 'updates array required' });
+  }
+
+  try {
+    const conn = await loginToSalesforce();
+    const results = [];
+
+    for (const item of updates) {
+      if (!item.id) continue;
+      const result = await conn.sobject('QuoteLineItem').update({
+        Id: item.id,
+        UnitPrice: Number(item.unitPrice)
+      });
+      results.push({ id: item.id, success: result.success, errors: result.errors });
+    }
+
+    const failed = results.filter(r => !r.success);
+    if (failed.length > 0) {
+      return res.status(207).json({ success: false, results, message: `${failed.length} update(s) failed` });
+    }
+
+    res.json({ success: true, results });
+  } catch (err) {
+    console.error('Error /api/update-prices:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ====== Start Server ======
 const PORT = process.env.PORT || 3002;
 app.listen(PORT, () => {

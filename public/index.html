@@ -37,6 +37,9 @@
     .btn-back:hover { background: #545b62; }
     .btn-print-all { background: #17a2b8; color: #fff; }
     .btn-print-all:hover { background: #138496; }
+    .btn-save-sfdc { background: #28a745; color: #fff; }
+    .btn-save-sfdc:hover { background: #218838; }
+    .btn-save-sfdc:disabled { background: #94d3a2; cursor: not-allowed; }
 
     /* Summary Table */
     .summary-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 14px; }
@@ -380,6 +383,8 @@ function buildDetailHtml(store, index, monthLabel) {
         </div>
         <div class="report-actions no-print" style="margin-top:8px">
           <button class="btn btn-pdf" onclick="closeAllEdits();window.print()">Descargar PDF</button>
+          <button class="btn btn-save-sfdc" id="save-sfdc-btn-${index}" onclick="savePricesToSFDC(${index})">Guardar Precios en SFDC</button>
+          <span id="save-sfdc-status-${index}" style="font-size:12px;margin-left:6px"></span>
         </div>
       </div>
 
@@ -542,12 +547,16 @@ function formatDate(isoStr) {
 function getStoreApprovedTotal(storeIndex) {
   const store = state.data && state.data.stores[storeIndex];
   if (!store) return 0;
-  return store.lineItems.reduce((sum, item) => {
+  const lineTotal = store.lineItems.reduce((sum, item) => {
     const _a = (item.aprobado === null || item.aprobado === undefined) ? '' : String(item.aprobado).trim().toLowerCase();
     if (_a === 'no' || _a === 'false') return sum;
     const up = state.priceOverrides[item.id] !== undefined ? state.priceOverrides[item.id] : item.unitPrice;
     return sum + up * item.quantity;
   }, 0);
+  const additionalsTotal = state.additionals
+    .filter(a => a.storeIndex === storeIndex)
+    .reduce((sum, a) => sum + a.amount, 0);
+  return lineTotal + additionalsTotal;
 }
 
 function computeGrandTotal() {
@@ -712,11 +721,13 @@ function addAdditional(storeIndex) {
   document.getElementById(`addUnit-${storeIndex}`).value = '';
   document.getElementById(`addUnitPrice-${storeIndex}`).value = '';
   renderAdditionals(storeIndex);
+  updateTotals(storeIndex);
 }
 
 function removeAdditional(i, storeIndex) {
   state.additionals.splice(i, 1);
   renderAdditionals(storeIndex);
+  updateTotals(storeIndex);
 }
 
 function renderAdditionals(storeIndex) {
@@ -745,6 +756,49 @@ function renderAdditionals(storeIndex) {
   });
   tbody.innerHTML = rows;
   if (totalEl) totalEl.textContent = money(total);
+}
+
+// ====== Save Prices to Salesforce ======
+async function savePricesToSFDC(storeIndex) {
+  closeAllEdits();
+
+  const store = state.data && state.data.stores[storeIndex];
+  if (!store) return;
+
+  // Collect only items that have a price override for this store
+  const updates = store.lineItems
+    .filter(item => state.priceOverrides[item.id] !== undefined)
+    .map(item => ({ id: item.id, unitPrice: state.priceOverrides[item.id] }));
+
+  const btn = document.getElementById('save-sfdc-btn-' + storeIndex);
+  const statusEl = document.getElementById('save-sfdc-status-' + storeIndex);
+
+  if (updates.length === 0) {
+    if (statusEl) { statusEl.textContent = 'Sin cambios de precio para guardar.'; statusEl.style.color = '#888'; setTimeout(() => { statusEl.textContent = ''; }, 3000); }
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+  if (statusEl) { statusEl.textContent = ''; }
+
+  try {
+    const resp = await fetch('/api/update-prices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates })
+    });
+    const data = await resp.json();
+
+    if (!resp.ok || !data.success) {
+      throw new Error(data.message || data.error || 'Error al guardar');
+    }
+
+    if (statusEl) { statusEl.textContent = `✓ ${updates.length} precio(s) guardado(s) en Salesforce`; statusEl.style.color = '#155724'; setTimeout(() => { statusEl.textContent = ''; }, 4000); }
+  } catch (err) {
+    if (statusEl) { statusEl.textContent = '❌ ' + err.message; statusEl.style.color = '#721c24'; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Guardar Precios en SFDC'; }
+  }
 }
 
 init();
