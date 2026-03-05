@@ -212,6 +212,7 @@ async function loadCondensado() {
   const content = document.getElementById('content');
   content.innerHTML = '<div class="loading">Cargando condensado...</div>';
   state.currentView = 'summary';
+  state.additionals = [];
   state.statusOverrides = {};
   state.priceOverrides = {};
   state.additionalPhotos = {};
@@ -281,57 +282,6 @@ function renderSummary() {
       </tbody>
     </table>
 
-    <div class="additionals-section">
-      <h3>PRODUCTOS ADICIONALES</h3>
-      <div class="additionals-form no-print">
-        <div class="form-field">
-          <label>Tienda</label>
-          <select id="addStore">
-            <option value="">-- Seleccionar --</option>
-            ${d.stores.map(s => `<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-field">
-          <label>Concepto</label>
-          <input type="text" id="addConcept" placeholder="Ej: Pintura extra" />
-        </div>
-        <div class="form-field">
-          <label>Cantidad</label>
-          <input type="number" id="addQty" placeholder="0" min="0" step="0.01" />
-        </div>
-        <div class="form-field">
-          <label>Unidad</label>
-          <input type="text" id="addUnit" placeholder="m², pzas, hrs…" style="width:90px" />
-        </div>
-        <div class="form-field">
-          <label>Precio Unitario</label>
-          <input type="number" id="addUnitPrice" placeholder="0.00" min="0" step="0.01" />
-        </div>
-        <button class="btn btn-add" onclick="addAdditional()">+ Agregar</button>
-      </div>
-      <table class="additionals-table">
-        <thead>
-          <tr>
-            <th>Tienda</th>
-            <th>Concepto</th>
-            <th style="text-align:right">Cantidad</th>
-            <th style="text-align:right">Precio Unit.</th>
-            <th style="text-align:right">Importe</th>
-            <th class="no-print" style="width:50px"></th>
-          </tr>
-        </thead>
-        <tbody id="additionalsBody">
-          <tr><td colspan="6" style="text-align:center;color:#888;padding:16px">Sin adicionales agregados</td></tr>
-        </tbody>
-        <tfoot>
-          <tr>
-            <td colspan="4" style="text-align:right">TOTAL ADICIONALES:</td>
-            <td style="text-align:right" id="additionalsTotal">$0.00</td>
-            <td class="no-print"></td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
     </div>
   `;
 
@@ -476,6 +426,50 @@ function buildDetailHtml(store, index, monthLabel) {
         <div id="added-photos-grid-${index}" class="photos-grid">
           <span style="color:#aaa;font-size:12px" class="no-print">Sin fotos adicionales</span>
         </div>
+      </div>
+
+      <div class="additionals-section">
+        <h3>PRODUCTOS ADICIONALES</h3>
+        <div class="additionals-form no-print">
+          <div class="form-field">
+            <label>Concepto</label>
+            <input type="text" id="addConcept-${index}" placeholder="Ej: Pintura extra" />
+          </div>
+          <div class="form-field">
+            <label>Cantidad</label>
+            <input type="number" id="addQty-${index}" placeholder="0" min="0" step="0.01" />
+          </div>
+          <div class="form-field">
+            <label>Unidad</label>
+            <input type="text" id="addUnit-${index}" placeholder="m², pzas, hrs…" style="width:90px" />
+          </div>
+          <div class="form-field">
+            <label>Precio Unitario</label>
+            <input type="number" id="addUnitPrice-${index}" placeholder="0.00" min="0" step="0.01" />
+          </div>
+          <button class="btn btn-add" onclick="addAdditional(${index})">+ Agregar</button>
+        </div>
+        <table class="additionals-table">
+          <thead>
+            <tr>
+              <th>Concepto</th>
+              <th style="text-align:right">Cantidad</th>
+              <th style="text-align:right">Precio Unit.</th>
+              <th style="text-align:right">Importe</th>
+              <th class="no-print" style="width:50px"></th>
+            </tr>
+          </thead>
+          <tbody id="additionalsBody-${index}">
+            <tr><td colspan="5" style="text-align:center;color:#888;padding:16px">Sin adicionales agregados</td></tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="3" style="text-align:right">TOTAL ADICIONALES:</td>
+              <td style="text-align:right" id="additionalsTotal-${index}">$0.00</td>
+              <td class="no-print"></td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
     </div>
   `;
@@ -701,52 +695,52 @@ function renderAddedPhotos(storeIndex) {
 }
 
 // ====== Adicionales ======
-function addAdditional() {
-  const store = document.getElementById('addStore').value;
-  const concept = document.getElementById('addConcept').value.trim();
-  const qty = parseFloat(document.getElementById('addQty').value);
-  const unit = document.getElementById('addUnit').value.trim();
-  const unitPrice = parseFloat(document.getElementById('addUnitPrice').value);
-  if (!store || !concept || isNaN(qty) || qty <= 0 || isNaN(unitPrice) || unitPrice <= 0) {
-    alert('Por favor completa los campos: tienda, concepto, cantidad y precio unitario.');
+function addAdditional(storeIndex) {
+  const storeName = state.data.stores[storeIndex].name;
+  const concept = document.getElementById(`addConcept-${storeIndex}`).value.trim();
+  const qty = parseFloat(document.getElementById(`addQty-${storeIndex}`).value);
+  const unit = document.getElementById(`addUnit-${storeIndex}`).value.trim();
+  const unitPrice = parseFloat(document.getElementById(`addUnitPrice-${storeIndex}`).value);
+  if (!concept || isNaN(qty) || qty <= 0 || isNaN(unitPrice) || unitPrice <= 0) {
+    alert('Por favor completa los campos: concepto, cantidad y precio unitario.');
     return;
   }
   const amount = qty * unitPrice;
-  state.additionals.push({ store, concept, qty, unit, unitPrice, amount });
-  document.getElementById('addConcept').value = '';
-  document.getElementById('addQty').value = '';
-  document.getElementById('addUnit').value = '';
-  document.getElementById('addUnitPrice').value = '';
-  renderAdditionals();
+  state.additionals.push({ store: storeName, storeIndex, concept, qty, unit, unitPrice, amount });
+  document.getElementById(`addConcept-${storeIndex}`).value = '';
+  document.getElementById(`addQty-${storeIndex}`).value = '';
+  document.getElementById(`addUnit-${storeIndex}`).value = '';
+  document.getElementById(`addUnitPrice-${storeIndex}`).value = '';
+  renderAdditionals(storeIndex);
 }
 
-function removeAdditional(i) {
+function removeAdditional(i, storeIndex) {
   state.additionals.splice(i, 1);
-  renderAdditionals();
+  renderAdditionals(storeIndex);
 }
 
-function renderAdditionals() {
-  const tbody = document.getElementById('additionalsBody');
-  const totalEl = document.getElementById('additionalsTotal');
+function renderAdditionals(storeIndex) {
+  const tbody = document.getElementById(`additionalsBody-${storeIndex}`);
+  const totalEl = document.getElementById(`additionalsTotal-${storeIndex}`);
   if (!tbody) return;
+  const storeItems = state.additionals.map((item, i) => ({ item, i })).filter(({ item }) => item.storeIndex === storeIndex);
   let total = 0;
-  if (state.additionals.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#888;padding:16px">Sin adicionales agregados</td></tr>';
+  if (storeItems.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#888;padding:16px">Sin adicionales agregados</td></tr>';
     if (totalEl) totalEl.textContent = money(0);
     return;
   }
   let rows = '';
-  state.additionals.forEach((item, i) => {
+  storeItems.forEach(({ item, i }) => {
     total += item.amount;
     const qtyLabel = item.unit ? `${item.qty} ${esc(item.unit)}` : item.qty;
     rows += `
       <tr>
-        <td>${esc(item.store)}</td>
         <td>${esc(item.concept)}</td>
         <td style="text-align:right">${qtyLabel}</td>
         <td style="text-align:right">${money(item.unitPrice)}</td>
         <td style="text-align:right">${money(item.amount)}</td>
-        <td class="no-print" style="text-align:center"><button class="btn btn-remove" onclick="removeAdditional(${i})">✕</button></td>
+        <td class="no-print" style="text-align:center"><button class="btn btn-remove" onclick="removeAdditional(${i},${storeIndex})">✕</button></td>
       </tr>`;
   });
   tbody.innerHTML = rows;
