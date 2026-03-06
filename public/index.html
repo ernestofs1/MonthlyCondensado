@@ -315,6 +315,17 @@ function showSummary() {
   const summary = document.getElementById('summaryView');
   if (summary) summary.classList.remove('hidden');
   state.currentView = 'summary';
+
+  // Refresh per-store costs and grand total so additionals are always reflected
+  if (state.data) {
+    state.data.stores.forEach((_, i) => {
+      const sc = document.getElementById('summary-cost-' + i);
+      if (sc) sc.textContent = money(getStoreApprovedTotal(i));
+    });
+    const grand = document.getElementById('grand-total-amount');
+    if (grand) grand.textContent = money(computeGrandTotal());
+  }
+
   window.scrollTo(0, 0);
 }
 
