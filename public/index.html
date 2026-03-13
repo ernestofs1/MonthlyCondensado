@@ -69,6 +69,8 @@
     .detail-table td { padding: 8px 12px; border-bottom: 1px solid #eee; vertical-align: top; }
     .detail-table tr.area-header { background: #e8eaf6; }
     .detail-table tr.area-header td { font-weight: 700; color: #1a1a2e; font-size: 14px; padding: 10px 12px; }
+    .detail-table tr.adicionales-header { background: #1a1a2e; }
+    .detail-table tr.adicionales-header td { color: #ffc107; font-weight: 700; font-size: 13px; padding: 10px 12px; letter-spacing: 0.5px; }
     .detail-table tr.subtotal-row { background: #f1f3f5; }
     .detail-table tr.subtotal-row td { font-weight: 700; border-top: 2px solid #333; }
     .detail-table img { width: 50px; height: 50px; object-fit: cover; border-radius: 4px; cursor: pointer; }
@@ -93,6 +95,7 @@
       .summary-table th, .detail-table th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .summary-table tr.total-row { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .detail-table tr.area-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .detail-table tr.adicionales-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .status-pill { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .report-header, .store-header, .summary-table, .detail-table, .photos-section { box-shadow: none; border: 1px solid #ddd; }
       .page-break { page-break-before: always; }
@@ -390,9 +393,13 @@ function showSummary() {
 }
 
 function buildDetailHtml(store, index, monthLabel) {
-  // Group line items by product (AREA)
+  // Separate saved ADICIONAL items from regular line items
+  const regularItems = store.lineItems.filter(l => l.subItem !== 'ADICIONAL');
+  const adicionalItems = store.lineItems.filter(l => l.subItem === 'ADICIONAL');
+
+  // Group regular line items by product (AREA)
   const grouped = {};
-  store.lineItems.forEach(l => {
+  regularItems.forEach(l => {
     const area = l.product;
     if (!grouped[area]) grouped[area] = [];
     grouped[area].push(l);
@@ -436,6 +443,42 @@ function buildDetailHtml(store, index, monthLabel) {
           </td>
           <td id="total-cell-${item.id}" style="text-align:right">${money(displayTotal)}</td>
           <td style="text-align:center">${aprobadoHtml}</td>
+        </tr>
+      `;
+    });
+  }
+
+  // Render saved ADICIONAL items at the bottom with a distinct header
+  if (adicionalItems.length > 0) {
+    tableRows += `<tr class="area-header adicionales-header"><td colspan="7">&#9733; ADICIONALES</td></tr>`;
+    adicionalItems.forEach(item => {
+      const displayUnitPrice = state.priceOverrides[item.id] !== undefined ? state.priceOverrides[item.id] : item.unitPrice;
+      const displayTotal = displayUnitPrice * item.quantity;
+      const unitVal = esc(item.description);   // unit stored in Description after our marker change
+      const descVal = esc(item.descTrabajo);   // concept stored in Descripcion_trabajo__c
+      tableRows += `
+        <tr data-item-id="${item.id}">
+          <td style="padding-left:24px">${unitVal}</td>
+          <td>
+            <textarea class="inp-desc-condensado no-print"
+              oninput="state.descOverrides['${item.id}']=this.value"
+              title="Editar descripción de trabajo">${descVal}</textarea>
+            <span class="desc-print">${descVal}</span>
+          </td>
+          <td></td>
+          <td style="text-align:center">${item.quantity}</td>
+          <td id="price-cell-${item.id}" class="price-editable"
+            onclick="editPrice('${item.id}',${item.quantity},${index},${displayUnitPrice})"
+            title="Clic para editar precio">
+            <div style="display:flex;align-items:center;justify-content:flex-end;gap:4px">
+              <span>${money(displayUnitPrice)}</span>
+              <button class="btn-catalog-sm no-print"
+                onclick="event.stopPropagation();openCatalog({type:'lineItem',itemId:'${item.id}',quantity:${item.quantity},storeIndex:${index}})"
+                title="Buscar en catálogo">&#128269;</button>
+            </div>
+          </td>
+          <td id="total-cell-${item.id}" style="text-align:right">${money(displayTotal)}</td>
+          <td></td>
         </tr>
       `;
     });

@@ -256,8 +256,8 @@ app.post('/api/additionals/save', async (req, res) => {
         Quantity: Number(item.qty) || 1,
         UnitPrice: Number(item.unitPrice) || 0,
         Descripcion_trabajo__c: item.concept || '',
-        Description: item.concept || '',
-        Sub_ITEM__c: item.unit || ''
+        Description: item.unit || '',
+        Sub_ITEM__c: 'ADICIONAL'
       };
       const result = await conn.sobject('QuoteLineItem').create(newRecord);
       results.push({ success: result.success, id: result.id, errors: result.errors });
