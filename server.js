@@ -118,7 +118,7 @@ app.get('/api/condensado', async (req, res) => {
       const storeName = quote.Tiendas__c || quote.Account_Name_text__c || 'Sin Tienda';
 
       const linesResult = await conn.query(`
-        SELECT Id, UnitPrice, Quantity, TotalPrice, Discount,
+        SELECT Id, PricebookEntryId, UnitPrice, Quantity, TotalPrice, Discount,
           Foto_2__c, Sub_ITEM__c, Description, Descripcion_trabajo__c,
           Aprobado__c,
           PricebookEntry.Name, PricebookEntry.Product2.Name
@@ -133,6 +133,7 @@ app.get('/api/condensado', async (req, res) => {
 
       const lineItems = (linesResult.records || []).map(l => ({
         id: l.Id,
+        pricebookEntryId: l.PricebookEntryId || null,
         product: (l.PricebookEntry && l.PricebookEntry.Product2 && l.PricebookEntry.Product2.Name)
           || (l.PricebookEntry && l.PricebookEntry.Name) || '—',
         subItem: l.Sub_ITEM__c || '—',
@@ -151,8 +152,19 @@ app.get('/api/condensado', async (req, res) => {
           name: storeName,
           quotes: [],
           lineItems: [],
-          totalCost: 0
+          totalCost: 0,
+          firstQuoteId: null,
+          firstPricebookEntryId: null
         };
+      }
+
+      // Track first quoteId and pricebookEntryId for this store (needed to create additionals)
+      if (!storeMap[storeName].firstQuoteId) {
+        storeMap[storeName].firstQuoteId = quote.Id;
+      }
+      if (!storeMap[storeName].firstPricebookEntryId) {
+        const firstWithEntry = lineItems.find(l => l.pricebookEntryId);
+        if (firstWithEntry) storeMap[storeName].firstPricebookEntryId = firstWithEntry.pricebookEntryId;
       }
 
       const quoteTotalCost = lineItems.reduce((sum, l) => sum + l.totalPrice, 0);
@@ -221,6 +233,45 @@ app.post('/api/update-prices', async (req, res) => {
     res.json({ success: true, results });
   } catch (err) {
     console.error('Error /api/update-prices:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ====== API: POST /api/additionals/save ======
+app.post('/api/additionals/save', async (req, res) => {
+  const { additionals } = req.body;
+  if (!Array.isArray(additionals) || additionals.length === 0) {
+    return res.status(400).json({ error: 'additionals array required' });
+  }
+
+  try {
+    const conn = await loginToSalesforce();
+    const results = [];
+
+    for (const item of additionals) {
+      if (!item.quoteId || !item.pricebookEntryId) continue;
+      const newRecord = {
+        QuoteId: item.quoteId,
+        PricebookEntryId: item.pricebookEntryId,
+        Quantity: Number(item.qty) || 1,
+        UnitPrice: Number(item.unitPrice) || 0,
+        Descripcion_trabajo__c: item.concept || '',
+        Description: item.concept || '',
+        Sub_ITEM__c: item.unit || ''
+      };
+      const result = await conn.sobject('QuoteLineItem').create(newRecord);
+      results.push({ success: result.success, id: result.id, errors: result.errors });
+    }
+
+    const failed = results.filter(r => !r.success);
+    if (failed.length > 0) {
+      const errMsg = failed.map(f => (f.errors || []).map(e => e.message).join(', ')).join('; ');
+      return res.status(207).json({ success: false, results, message: `${failed.length} adicional(es) no guardado(s): ${errMsg}` });
+    }
+
+    res.json({ success: true, results });
+  } catch (err) {
+    console.error('Error /api/additionals/save:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

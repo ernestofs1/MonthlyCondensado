@@ -861,7 +861,7 @@ async function savePricesToSFDC(storeIndex) {
   const store = state.data && state.data.stores[storeIndex];
   if (!store) return;
 
-  // Collect items that have a price OR description change for this store
+  // Collect existing line item changes (price + description)
   const updates = store.lineItems
     .filter(item => state.priceOverrides[item.id] !== undefined || state.descOverrides[item.id] !== undefined)
     .map(item => {
@@ -871,11 +871,27 @@ async function savePricesToSFDC(storeIndex) {
       return u;
     });
 
+  // Collect new additionals for this store
+  const additionalsForStore = state.additionals.filter(a => a.storeIndex === storeIndex);
+  const additionalsPayload = additionalsForStore.map(a => ({
+    quoteId: store.firstQuoteId,
+    pricebookEntryId: store.firstPricebookEntryId,
+    concept: a.concept,
+    qty: a.qty,
+    unit: a.unit,
+    unitPrice: a.unitPrice
+  }));
+
   const btn = document.getElementById('save-sfdc-btn-' + storeIndex);
   const statusEl = document.getElementById('save-sfdc-status-' + storeIndex);
 
-  if (updates.length === 0) {
+  if (updates.length === 0 && additionalsPayload.length === 0) {
     if (statusEl) { statusEl.textContent = 'Sin cambios para guardar.'; statusEl.style.color = '#888'; setTimeout(() => { statusEl.textContent = ''; }, 3000); }
+    return;
+  }
+
+  if (!store.firstPricebookEntryId && additionalsPayload.length > 0) {
+    if (statusEl) { statusEl.textContent = '❌ No se encontró referencia de producto para guardar adicionales.'; statusEl.style.color = '#721c24'; }
     return;
   }
 
@@ -883,22 +899,46 @@ async function savePricesToSFDC(storeIndex) {
   if (statusEl) { statusEl.textContent = ''; }
 
   try {
-    const resp = await fetch('/api/update-prices', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ updates })
-    });
-    const data = await resp.json();
+    let savedCount = 0;
 
-    if (!resp.ok || !data.success) {
-      throw new Error(data.message || data.error || 'Error al guardar');
+    // Save existing line item changes
+    if (updates.length > 0) {
+      const resp = await fetch('/api/update-prices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates })
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.success) throw new Error(data.message || data.error || 'Error al guardar cambios');
+      savedCount += updates.length;
     }
 
-    if (statusEl) { statusEl.textContent = `✓ ${updates.length} registro(s) guardado(s) en Salesforce`; statusEl.style.color = '#155724'; setTimeout(() => { statusEl.textContent = ''; }, 4000); }
+    // Save new additionals
+    if (additionalsPayload.length > 0) {
+      const resp2 = await fetch('/api/additionals/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ additionals: additionalsPayload })
+      });
+      const data2 = await resp2.json();
+      if (!resp2.ok || !data2.success) throw new Error(data2.message || data2.error || 'Error al guardar adicionales');
+      savedCount += additionalsPayload.length;
+
+      // Clear saved additionals from state and re-render table
+      state.additionals = state.additionals.filter(a => a.storeIndex !== storeIndex);
+      renderAdditionals(storeIndex);
+      updateTotals(storeIndex);
+    }
+
+    if (statusEl) {
+      statusEl.textContent = `✓ ${savedCount} registro(s) guardado(s) en Salesforce`;
+      statusEl.style.color = '#155724';
+      setTimeout(() => { statusEl.textContent = ''; }, 4000);
+    }
   } catch (err) {
     if (statusEl) { statusEl.textContent = '❌ ' + err.message; statusEl.style.color = '#721c24'; }
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Guardar Precios en SFDC'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Guardar en SFDC'; }
   }
 }
 
