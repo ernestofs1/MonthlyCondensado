@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const jsforce = require('jsforce');
+const https = require('https');
 const path = require('path');
 
 const app = express();
@@ -21,6 +22,68 @@ async function loginToSalesforce() {
 
 function escapeSOQLString(str) {
   return (str ?? '').toString().replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+// ====== Catalog Cache ======
+let catalogCache = null;
+let catalogCacheTime = 0;
+const CATALOG_TTL = 5 * 60 * 1000;
+
+function fetchCSV(url) {
+  return new Promise((resolve, reject) => {
+    https.get(url, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        return fetchCSV(res.headers.location).then(resolve).catch(reject);
+      }
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => resolve(data));
+      res.on('error', reject);
+    }).on('error', reject);
+  });
+}
+
+function parseCSVLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"' && line[i + 1] === '"') { current += '"'; i++; }
+      else if (ch === '"') { inQuotes = false; }
+      else { current += ch; }
+    } else {
+      if (ch === '"') { inQuotes = true; }
+      else if (ch === ',') { result.push(current.trim()); current = ''; }
+      else { current += ch; }
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+function parseCatalog(csvText) {
+  const lines = csvText.split('\n').filter(l => l.trim());
+  const items = [];
+  let currentCategory = '';
+  for (let i = 0; i < lines.length; i++) {
+    const cols = parseCSVLine(lines[i]);
+    if (!cols[0]) continue;
+    const desc = cols[0].trim();
+    const unit = (cols[1] || '').trim().toUpperCase();
+    const rawCost = (cols[3] || cols[2] || '').replace(/[$,\s"]/g, '');
+    const unitCost = parseFloat(rawCost);
+    const validUnits = ['PZA', 'M2', 'JOR', 'SERV', 'LOTE', 'SAL', 'ML', 'KG', 'LT', 'HR', 'GLOBAL'];
+    if (!validUnits.includes(unit) && isNaN(unitCost)) {
+      if (desc.length > 2 && desc === desc.toUpperCase()) currentCategory = desc;
+      continue;
+    }
+    if (desc && !isNaN(unitCost) && unitCost > 0) {
+      items.push({ category: currentCategory, description: desc, unit: unit || 'PZA', unitCost });
+    }
+  }
+  return items;
 }
 
 // ====== API: GET /api/condensado ======
@@ -143,10 +206,10 @@ app.post('/api/update-prices', async (req, res) => {
 
     for (const item of updates) {
       if (!item.id) continue;
-      const result = await conn.sobject('QuoteLineItem').update({
-        Id: item.id,
-        UnitPrice: Number(item.unitPrice)
-      });
+      const updateData = { Id: item.id };
+      if (item.unitPrice !== undefined) updateData.UnitPrice = Number(item.unitPrice);
+      if (item.descripcionTrabajo !== undefined) updateData.Descripcion_trabajo__c = item.descripcionTrabajo;
+      const result = await conn.sobject('QuoteLineItem').update(updateData);
       results.push({ id: item.id, success: result.success, errors: result.errors });
     }
 
@@ -158,6 +221,25 @@ app.post('/api/update-prices', async (req, res) => {
     res.json({ success: true, results });
   } catch (err) {
     console.error('Error /api/update-prices:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ====== API: GET /api/catalog ======
+app.get('/api/catalog', async (req, res) => {
+  try {
+    const now = Date.now();
+    if (catalogCache && (now - catalogCacheTime) < CATALOG_TTL) {
+      return res.json({ items: catalogCache });
+    }
+    const csvUrl = 'https://docs.google.com/spreadsheets/d/11jc-SlDm3p7gdV5ofIilje6_kMlsbA89xvegjURzuGk/gviz/tq?tqx=out:csv&gid=1138438490';
+    const csvText = await fetchCSV(csvUrl);
+    const items = parseCatalog(csvText);
+    catalogCache = items;
+    catalogCacheTime = now;
+    res.json({ items });
+  } catch (err) {
+    console.error('Error /api/catalog:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

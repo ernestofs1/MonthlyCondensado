@@ -143,6 +143,32 @@
       .detail-table { font-size: 12px; }
       .report-actions { flex-wrap: wrap; }
     }
+
+    /* Catalog Modal */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: #fff; border-radius: 12px; width: 90%; max-width: 700px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+    .modal-header { padding: 16px 20px; border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between; }
+    .modal-header h2 { font-size: 18px; }
+    .modal-close { background: none; border: none; font-size: 24px; cursor: pointer; color: #666; }
+    .modal-filters { padding: 12px 20px; display: flex; gap: 12px; flex-wrap: wrap; border-bottom: 1px solid #eee; }
+    .modal-filters input { flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+    .modal-filters select { padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+    .modal-body { overflow-y: auto; flex: 1; padding: 0; }
+    .catalog-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .catalog-table th { background: #f8f9fa; padding: 10px 12px; text-align: left; position: sticky; top: 0; z-index: 1; font-weight: 600; }
+    .catalog-table td { padding: 8px 12px; border-bottom: 1px solid #f0f0f0; }
+    .catalog-table tr:hover { background: #e8f4fd; }
+    .catalog-cat { background: #1a1a2e; color: #fff; font-weight: 600; }
+    .catalog-cat td { padding: 8px 12px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .btn-select-price { background: #4a6cf7; color: #fff; border: none; border-radius: 4px; padding: 4px 12px; cursor: pointer; font-size: 12px; font-weight: 600; }
+    .btn-select-price:hover { background: #3555d3; }
+    .btn-catalog-sm { background: none; border: 1px solid #4a6cf7; color: #4a6cf7; border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 13px; line-height: 1; }
+    .btn-catalog-sm:hover { background: #4a6cf7; color: #fff; }
+    .inp-desc-condensado { width: 100%; min-width: 120px; min-height: 32px; padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; font-family: inherit; resize: vertical; }
+    .inp-desc-condensado:focus { border-color: #4a6cf7; outline: none; }
+    @media print { .btn-catalog-sm, .inp-desc-condensado { display: none !important; } .desc-print { display: inline !important; } }
+    .desc-print { display: none; }
   </style>
 </head>
 <body>
@@ -172,6 +198,35 @@
   <img id="imgPreview" src="">
 </div>
 
+<!-- Catalog Modal -->
+<div class="modal-overlay" id="catalogModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Catálogo de Precios</h2>
+      <button class="modal-close" onclick="closeCatalog()">&times;</button>
+    </div>
+    <div class="modal-filters">
+      <input type="text" id="catalogSearch" placeholder="Buscar..." oninput="filterCatalog()">
+      <select id="catalogCategory" onchange="filterCatalog()">
+        <option value="">Todas las categorías</option>
+      </select>
+    </div>
+    <div class="modal-body">
+      <table class="catalog-table">
+        <thead>
+          <tr>
+            <th>Descripción</th>
+            <th>Unidad</th>
+            <th>Precio Unit.</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="catalogBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <script>
 const MONTHS = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
 
@@ -183,12 +238,16 @@ const state = {
   additionals: [],
   statusOverrides: {},
   priceOverrides: {},
-  additionalPhotos: {}
+  descOverrides: {},
+  additionalPhotos: {},
+  catalog: [],
+  activeCatalogTarget: null
 };
 
 function init() {
   renderToolbar();
   loadCondensado();
+  loadCatalog();
 }
 
 function renderToolbar() {
@@ -218,6 +277,7 @@ async function loadCondensado() {
   state.additionals = [];
   state.statusOverrides = {};
   state.priceOverrides = {};
+  state.descOverrides = {};
   state.additionalPhotos = {};
 
   try {
@@ -352,16 +412,27 @@ function buildDetailHtml(store, index, monthLabel) {
       const displayUnitPrice = state.priceOverrides[item.id] !== undefined ? state.priceOverrides[item.id] : item.unitPrice;
       const displayTotal = displayUnitPrice * item.quantity;
       const rowStyle = isNo ? 'opacity:0.45;background:#fff5f5;text-decoration:line-through;' : '';
+      const descVal = esc(item.descTrabajo || item.description);
       tableRows += `
-        <tr style="${rowStyle}">
+        <tr style="${rowStyle}" data-item-id="${item.id}">
           <td style="padding-left:24px">${esc(item.subItem)}</td>
-          <td>${esc(item.descTrabajo || item.description)}</td>
+          <td>
+            <textarea class="inp-desc-condensado no-print"
+              oninput="state.descOverrides['${item.id}']=this.value"
+              title="Editar descripción de trabajo">${descVal}</textarea>
+            <span class="desc-print">${descVal}</span>
+          </td>
           <td>${item.foto ? `<img src="${esc(item.foto)}" onclick="showImage('${esc(item.foto)}')" alt="">` : ''}</td>
           <td style="text-align:center">${item.quantity}</td>
-          <td id="price-cell-${item.id}" class="price-editable" style="text-align:right"
+          <td id="price-cell-${item.id}" class="price-editable"
             onclick="editPrice('${item.id}',${item.quantity},${index},${displayUnitPrice})"
             title="Clic para editar precio">
-            ${money(displayUnitPrice)}
+            <div style="display:flex;align-items:center;justify-content:flex-end;gap:4px">
+              <span>${money(displayUnitPrice)}</span>
+              <button class="btn-catalog-sm no-print"
+                onclick="event.stopPropagation();openCatalog({type:'lineItem',itemId:'${item.id}',quantity:${item.quantity},storeIndex:${index}})"
+                title="Buscar en catálogo">&#128269;</button>
+            </div>
           </td>
           <td id="total-cell-${item.id}" style="text-align:right">${money(displayTotal)}</td>
           <td style="text-align:center">${aprobadoHtml}</td>
@@ -461,7 +532,10 @@ function buildDetailHtml(store, index, monthLabel) {
           </div>
           <div class="form-field">
             <label>Precio Unitario</label>
-            <input type="number" id="addUnitPrice-${index}" placeholder="0.00" min="0" step="0.01" />
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="number" id="addUnitPrice-${index}" placeholder="0.00" min="0" step="0.01" />
+              <button class="btn-catalog-sm" onclick="openCatalog({type:'additional',storeIndex:${index}})" title="Buscar precio en catálogo" style="padding:6px 8px;font-size:15px">&#128269;</button>
+            </div>
           </div>
           <button class="btn btn-add" onclick="addAdditional(${index})">+ Agregar</button>
         </div>
@@ -591,11 +665,17 @@ function updateTotals(storeIndex) {
 function editPrice(itemId, quantity, storeIndex, currentPrice) {
   const cell = document.getElementById('price-cell-' + itemId);
   if (!cell) return;
-  cell.innerHTML = `<input type="number" class="price-input" value="${currentPrice}" min="0" step="0.01"
-    data-item-id="${itemId}" data-quantity="${quantity}" data-store-index="${storeIndex}"
-    style="width:85px;padding:4px 6px;border:1px solid #1a1a2e;border-radius:4px;font-size:12px;text-align:right"
-    onblur="savePrice('${itemId}',${quantity},${storeIndex},this.value)"
-    onkeydown="if(event.key==='Enter')this.blur()" />`;
+  cell.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:4px">
+      <input type="number" class="price-input" value="${currentPrice}" min="0" step="0.01"
+        data-item-id="${itemId}" data-quantity="${quantity}" data-store-index="${storeIndex}"
+        style="width:80px;padding:4px 6px;border:1px solid #1a1a2e;border-radius:4px;font-size:12px;text-align:right"
+        onblur="savePrice('${itemId}',${quantity},${storeIndex},this.value)"
+        onkeydown="if(event.key==='Enter')this.blur()" />
+      <button class="btn-catalog-sm no-print"
+        onclick="event.stopPropagation();openCatalog({type:'lineItem',itemId:'${itemId}',quantity:${quantity},storeIndex:${storeIndex}})"
+        title="Catálogo">&#128269;</button>
+    </div>`;
   const inp = cell.querySelector('input');
   inp.focus();
   inp.select();
@@ -607,10 +687,15 @@ function savePrice(itemId, quantity, storeIndex, newValue) {
   const cell = document.getElementById('price-cell-' + itemId);
   if (cell) {
     cell.className = 'price-editable';
-    cell.style.textAlign = 'right';
     cell.title = 'Clic para editar precio';
     cell.onclick = () => editPrice(itemId, quantity, storeIndex, newPrice);
-    cell.innerHTML = money(newPrice);
+    cell.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:flex-end;gap:4px">
+        <span>${money(newPrice)}</span>
+        <button class="btn-catalog-sm no-print"
+          onclick="event.stopPropagation();openCatalog({type:'lineItem',itemId:'${itemId}',quantity:${quantity},storeIndex:${storeIndex}})"
+          title="Buscar en catálogo">&#128269;</button>
+      </div>`;
   }
   const totalCell = document.getElementById('total-cell-' + itemId);
   if (totalCell) totalCell.textContent = money(newPrice * quantity);
@@ -776,16 +861,21 @@ async function savePricesToSFDC(storeIndex) {
   const store = state.data && state.data.stores[storeIndex];
   if (!store) return;
 
-  // Collect only items that have a price override for this store
+  // Collect items that have a price OR description change for this store
   const updates = store.lineItems
-    .filter(item => state.priceOverrides[item.id] !== undefined)
-    .map(item => ({ id: item.id, unitPrice: state.priceOverrides[item.id] }));
+    .filter(item => state.priceOverrides[item.id] !== undefined || state.descOverrides[item.id] !== undefined)
+    .map(item => {
+      const u = { id: item.id };
+      if (state.priceOverrides[item.id] !== undefined) u.unitPrice = state.priceOverrides[item.id];
+      if (state.descOverrides[item.id] !== undefined) u.descripcionTrabajo = state.descOverrides[item.id];
+      return u;
+    });
 
   const btn = document.getElementById('save-sfdc-btn-' + storeIndex);
   const statusEl = document.getElementById('save-sfdc-status-' + storeIndex);
 
   if (updates.length === 0) {
-    if (statusEl) { statusEl.textContent = 'Sin cambios de precio para guardar.'; statusEl.style.color = '#888'; setTimeout(() => { statusEl.textContent = ''; }, 3000); }
+    if (statusEl) { statusEl.textContent = 'Sin cambios para guardar.'; statusEl.style.color = '#888'; setTimeout(() => { statusEl.textContent = ''; }, 3000); }
     return;
   }
 
@@ -804,13 +894,124 @@ async function savePricesToSFDC(storeIndex) {
       throw new Error(data.message || data.error || 'Error al guardar');
     }
 
-    if (statusEl) { statusEl.textContent = `✓ ${updates.length} precio(s) guardado(s) en Salesforce`; statusEl.style.color = '#155724'; setTimeout(() => { statusEl.textContent = ''; }, 4000); }
+    if (statusEl) { statusEl.textContent = `✓ ${updates.length} registro(s) guardado(s) en Salesforce`; statusEl.style.color = '#155724'; setTimeout(() => { statusEl.textContent = ''; }, 4000); }
   } catch (err) {
     if (statusEl) { statusEl.textContent = '❌ ' + err.message; statusEl.style.color = '#721c24'; }
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Guardar Precios en SFDC'; }
   }
 }
+
+// ====== Catalog ======
+async function loadCatalog() {
+  try {
+    const resp = await fetch('/api/catalog');
+    const data = await resp.json();
+    state.catalog = data.items || [];
+    populateCategoryFilter();
+  } catch (err) {
+    console.error('Error loading catalog:', err);
+  }
+}
+
+function populateCategoryFilter() {
+  const select = document.getElementById('catalogCategory');
+  if (!select) return;
+  const categories = [...new Set(state.catalog.map(i => i.category).filter(Boolean))];
+  select.innerHTML = '<option value="">Todas las categorías</option>';
+  categories.forEach(cat => {
+    const opt = document.createElement('option');
+    opt.value = cat;
+    opt.textContent = cat;
+    select.appendChild(opt);
+  });
+}
+
+function openCatalog(target) {
+  state.activeCatalogTarget = target;
+  document.getElementById('catalogSearch').value = '';
+  document.getElementById('catalogCategory').value = '';
+  renderCatalogTable(state.catalog);
+  document.getElementById('catalogModal').classList.add('open');
+}
+
+function closeCatalog() {
+  document.getElementById('catalogModal').classList.remove('open');
+  state.activeCatalogTarget = null;
+}
+
+function filterCatalog() {
+  const search = document.getElementById('catalogSearch').value.toLowerCase();
+  const cat = document.getElementById('catalogCategory').value;
+  let filtered = state.catalog;
+  if (cat) filtered = filtered.filter(i => i.category === cat);
+  if (search) filtered = filtered.filter(i =>
+    i.description.toLowerCase().includes(search) ||
+    (i.category || '').toLowerCase().includes(search)
+  );
+  renderCatalogTable(filtered);
+}
+
+function renderCatalogTable(items) {
+  const tbody = document.getElementById('catalogBody');
+  let html = '';
+  let lastCat = '';
+  items.forEach(item => {
+    if (item.category && item.category !== lastCat) {
+      lastCat = item.category;
+      html += `<tr class="catalog-cat"><td colspan="4">${esc(item.category)}</td></tr>`;
+    }
+    const safeDesc = esc(item.description).replace(/'/g, "\\'");
+    const safeUnit = esc(item.unit).replace(/'/g, "\\'");
+    html += `
+      <tr>
+        <td>${esc(item.description)}</td>
+        <td>${esc(item.unit)}</td>
+        <td>$${item.unitCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <td><button class="btn-select-price" onclick="selectPrice(${item.unitCost},'${safeDesc}','${safeUnit}')">Usar</button></td>
+      </tr>`;
+  });
+  if (items.length === 0) {
+    html = '<tr><td colspan="4" style="text-align:center;padding:20px;color:#888">No se encontraron items</td></tr>';
+  }
+  tbody.innerHTML = html;
+}
+
+function selectPrice(price, description, unit) {
+  const target = state.activeCatalogTarget;
+  if (!target) { closeCatalog(); return; }
+
+  if (target.type === 'additional') {
+    const { storeIndex } = target;
+    const priceInput = document.getElementById(`addUnitPrice-${storeIndex}`);
+    if (priceInput) priceInput.value = price.toFixed(2);
+    if (description) {
+      const conceptInput = document.getElementById(`addConcept-${storeIndex}`);
+      if (conceptInput && !conceptInput.value.trim()) conceptInput.value = description;
+    }
+    if (unit) {
+      const unitInput = document.getElementById(`addUnit-${storeIndex}`);
+      if (unitInput && !unitInput.value.trim()) unitInput.value = unit;
+    }
+  } else if (target.type === 'lineItem') {
+    const { itemId, quantity, storeIndex } = target;
+    savePrice(itemId, quantity, storeIndex, price);
+    if (description) {
+      state.descOverrides[itemId] = description;
+      const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
+      if (row) {
+        const textarea = row.querySelector('.inp-desc-condensado');
+        if (textarea) textarea.value = description;
+      }
+    }
+  }
+  closeCatalog();
+}
+
+// Close catalog on overlay click
+document.getElementById('catalogModal').addEventListener('click', function(e) {
+  if (e.target === this) closeCatalog();
+});
 
 init();
 </script>
