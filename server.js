@@ -276,6 +276,23 @@ app.post('/api/additionals/save', async (req, res) => {
   }
 });
 
+// ====== API: DELETE /api/line-item/:id ======
+app.delete('/api/line-item/:id', async (req, res) => {
+  const { id } = req.params;
+  if (!id) return res.status(400).json({ error: 'id required' });
+  try {
+    const conn = await loginToSalesforce();
+    const result = await conn.sobject('QuoteLineItem').delete(id);
+    if (!result.success) {
+      return res.status(400).json({ error: (result.errors || []).map(e => e.message).join(', ') || 'Delete failed' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error DELETE /api/line-item:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ====== API: GET /api/catalog ======
 app.get('/api/catalog', async (req, res) => {
   try {

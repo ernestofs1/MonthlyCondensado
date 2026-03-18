@@ -758,9 +758,24 @@ function closeAllEdits() {
   });
 }
 
-function deleteLineItem(itemId, storeIndex) {
+async function deleteLineItem(itemId, storeIndex) {
+  if (!confirm('¿Eliminar esta línea de Salesforce?')) return;
   const store = state.data && state.data.stores[storeIndex];
   if (!store) return;
+
+  const btn = document.querySelector(`tr[data-item-id="${itemId}"] .btn-remove`);
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+
+  try {
+    const resp = await fetch(`/api/line-item/${itemId}`, { method: 'DELETE' });
+    const data = await resp.json();
+    if (!resp.ok || !data.success) throw new Error(data.error || 'Error al eliminar');
+  } catch (err) {
+    alert('No se pudo eliminar: ' + err.message);
+    if (btn) { btn.disabled = false; btn.textContent = '✕'; }
+    return;
+  }
+
   store.lineItems = store.lineItems.filter(l => l.id !== itemId);
   const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
   if (row) row.remove();
