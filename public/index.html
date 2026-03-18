@@ -442,6 +442,9 @@ function buildDetailHtml(store, index, monthLabel) {
           </td>
           <td id="total-cell-${item.id}" style="text-align:right">${money(displayTotal)}</td>
           <td style="text-align:center">${aprobadoHtml}</td>
+          <td class="no-print" style="text-align:center">
+            <button class="btn-remove" onclick="deleteLineItem('${item.id}',${index})" title="Eliminar fila">✕</button>
+          </td>
         </tr>
       `;
     });
@@ -478,6 +481,9 @@ function buildDetailHtml(store, index, monthLabel) {
           </td>
           <td id="total-cell-${item.id}" style="text-align:right">${money(displayTotal)}</td>
           <td></td>
+          <td class="no-print" style="text-align:center">
+            <button class="btn-remove" onclick="deleteLineItem('${item.id}',${index})" title="Eliminar fila">✕</button>
+          </td>
         </tr>
       `;
     });
@@ -522,6 +528,7 @@ function buildDetailHtml(store, index, monthLabel) {
             <th style="text-align:right">P. Unitario</th>
             <th style="text-align:right">Importe</th>
             <th style="text-align:center">Aprobado</th>
+            <th class="no-print" style="width:40px"></th>
           </tr>
         </thead>
         <tbody>
@@ -529,6 +536,7 @@ function buildDetailHtml(store, index, monthLabel) {
           <tr class="subtotal-row">
             <td colspan="6" style="text-align:right">SUBTOTAL ${esc(store.name)}:</td>
             <td style="text-align:right" id="subtotal-amount-${index}">${money(approvedSubtotal)}</td>
+            <td class="no-print"></td>
           </tr>
         </tbody>
       </table>
@@ -748,6 +756,15 @@ function closeAllEdits() {
   document.querySelectorAll('.price-input').forEach(inp => {
     savePrice(inp.dataset.itemId, Number(inp.dataset.quantity), Number(inp.dataset.storeIndex), inp.value);
   });
+}
+
+function deleteLineItem(itemId, storeIndex) {
+  const store = state.data && state.data.stores[storeIndex];
+  if (!store) return;
+  store.lineItems = store.lineItems.filter(l => l.id !== itemId);
+  const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
+  if (row) row.remove();
+  updateTotals(storeIndex);
 }
 
 // ====== Status Edit ======
