@@ -96,6 +96,7 @@
       .detail-table tr.area-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
       .status-pill { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      tr[style*="background:#e8f5e9"], tr[style*="background:#fff3cd"] { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .report-header, .store-header, .summary-table, .detail-table, .photos-section { box-shadow: none; border: 1px solid #ddd; }
       .page-break { page-break-before: always; }
       .detail-view.active { display: block !important; }
@@ -453,8 +454,29 @@ function buildDetailHtml(store, index, monthLabel) {
     });
   }
 
+  // Compute separate subtotals
+  const approvedRegularSubtotal = regularItems.reduce((sum, item) => {
+    const _a = (item.aprobado === null || item.aprobado === undefined) ? '' : String(item.aprobado).trim().toLowerCase();
+    if (_a === 'no' || _a === 'false') return sum;
+    const up = state.priceOverrides[item.id] !== undefined ? state.priceOverrides[item.id] : item.unitPrice;
+    return sum + up * item.quantity;
+  }, 0);
+  const adicionalItemsSubtotal = adicionalItems.reduce((sum, item) => {
+    const up = state.priceOverrides[item.id] !== undefined ? state.priceOverrides[item.id] : item.unitPrice;
+    return sum + up * item.quantity;
+  }, 0);
+  const approvedSubtotal = approvedRegularSubtotal + adicionalItemsSubtotal;
+
   // Render saved ADICIONAL items at the bottom with a distinct header
   if (adicionalItems.length > 0) {
+    // TOTAL APROBADOS row (sum of regular approved items)
+    tableRows += `
+      <tr style="background:#e8f5e9;border-top:2px solid #28a745">
+        <td colspan="6" style="text-align:right;font-weight:700;color:#155724;padding:10px 12px">TOTAL APROBADOS:</td>
+        <td style="text-align:right;font-weight:700;color:#155724;padding:10px 12px" id="approvedRegular-amount-${index}">${money(approvedRegularSubtotal)}</td>
+        <td class="no-print"></td>
+      </tr>
+    `;
     tableRows += `<tr class="area-header"><td colspan="7">ADICIONALES</td></tr>`;
     adicionalItems.forEach(item => {
       const displayUnitPrice = state.priceOverrides[item.id] !== undefined ? state.priceOverrides[item.id] : item.unitPrice;
@@ -490,14 +512,32 @@ function buildDetailHtml(store, index, monthLabel) {
         </tr>
       `;
     });
+    // TOTAL ADICIONALES row
+    tableRows += `
+      <tr style="background:#fff3cd;border-top:2px solid #ffc107">
+        <td colspan="6" style="text-align:right;font-weight:700;color:#856404;padding:10px 12px">TOTAL ADICIONALES:</td>
+        <td style="text-align:right;font-weight:700;color:#856404;padding:10px 12px" id="adicionalItems-amount-${index}">${money(adicionalItemsSubtotal)}</td>
+        <td class="no-print"></td>
+      </tr>
+    `;
+    // TOTAL EJECUTADOS row (grand total of this store)
+    tableRows += `
+      <tr class="subtotal-row">
+        <td colspan="6" style="text-align:right">TOTAL EJECUTADOS ${esc(store.name)}:</td>
+        <td style="text-align:right" id="subtotal-amount-${index}">${money(approvedSubtotal)}</td>
+        <td class="no-print"></td>
+      </tr>
+    `;
+  } else {
+    // No adicionales — just show regular subtotal
+    tableRows += `
+      <tr class="subtotal-row">
+        <td colspan="6" style="text-align:right">SUBTOTAL ${esc(store.name)}:</td>
+        <td style="text-align:right" id="subtotal-amount-${index}">${money(approvedSubtotal)}</td>
+        <td class="no-print"></td>
+      </tr>
+    `;
   }
-
-  const approvedSubtotal = store.lineItems.reduce((sum, item) => {
-    const _a = (item.aprobado === null || item.aprobado === undefined) ? '' : String(item.aprobado).trim().toLowerCase();
-    if (_a === 'no' || _a === 'false') return sum;
-    const up = state.priceOverrides[item.id] !== undefined ? state.priceOverrides[item.id] : item.unitPrice;
-    return sum + up * item.quantity;
-  }, 0);
 
   // Collect all photos
   const photos = store.lineItems.filter(l => l.foto).map(l => l.foto);
@@ -536,11 +576,6 @@ function buildDetailHtml(store, index, monthLabel) {
         </thead>
         <tbody>
           ${tableRows}
-          <tr class="subtotal-row">
-            <td colspan="6" style="text-align:right">SUBTOTAL ${esc(store.name)}:</td>
-            <td style="text-align:right" id="subtotal-amount-${index}">${money(approvedSubtotal)}</td>
-            <td class="no-print"></td>
-          </tr>
         </tbody>
       </table>
 
@@ -703,6 +738,25 @@ function computeGrandTotal() {
 }
 
 function updateTotals(storeIndex) {
+  const store = state.data && state.data.stores[storeIndex];
+  if (store) {
+    const regularItems = store.lineItems.filter(l => l.subItem !== 'ADICIONAL');
+    const adicionalItems = store.lineItems.filter(l => l.subItem === 'ADICIONAL');
+    const approvedRegularTotal = regularItems.reduce((sum, item) => {
+      const _a = (item.aprobado === null || item.aprobado === undefined) ? '' : String(item.aprobado).trim().toLowerCase();
+      if (_a === 'no' || _a === 'false') return sum;
+      const up = state.priceOverrides[item.id] !== undefined ? state.priceOverrides[item.id] : item.unitPrice;
+      return sum + up * item.quantity;
+    }, 0);
+    const adicionalTotal = adicionalItems.reduce((sum, item) => {
+      const up = state.priceOverrides[item.id] !== undefined ? state.priceOverrides[item.id] : item.unitPrice;
+      return sum + up * item.quantity;
+    }, 0);
+    const arEl = document.getElementById('approvedRegular-amount-' + storeIndex);
+    if (arEl) arEl.textContent = money(approvedRegularTotal);
+    const aiEl = document.getElementById('adicionalItems-amount-' + storeIndex);
+    if (aiEl) aiEl.textContent = money(adicionalTotal);
+  }
   const el = document.getElementById('subtotal-amount-' + storeIndex);
   const t = getStoreApprovedTotal(storeIndex);
   if (el) el.textContent = money(t);
