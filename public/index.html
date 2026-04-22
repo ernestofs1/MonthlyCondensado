@@ -171,6 +171,9 @@
     .btn-select-price:hover { background: #3555d3; }
     .btn-catalog-sm { background: none; border: 1px solid #4a6cf7; color: #4a6cf7; border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 13px; line-height: 1; }
     .btn-catalog-sm:hover { background: #4a6cf7; color: #fff; }
+    .btn-add-concept { background: none; border: 1px dashed #28a745; color: #28a745; border-radius: 4px; padding: 2px 10px; cursor: pointer; font-size: 12px; font-weight: 600; }
+    .btn-add-concept:hover { background: #e8f5e9; }
+    @media print { .btn-add-concept, .inline-add-form { display: none !important; } }
     .inp-desc-condensado { width: 100%; min-width: 120px; min-height: 32px; padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; font-family: inherit; resize: vertical; }
     .inp-desc-condensado:focus { border-color: #4a6cf7; outline: none; }
     @media print { .btn-catalog-sm, .inp-desc-condensado { display: none !important; } .desc-print { display: inline !important; } }
@@ -242,6 +245,7 @@ const state = {
   data: null,
   currentView: 'summary', // 'summary' or 'detail'
   additionals: [],
+  inlineAdditionals: {},
   statusOverrides: {},
   priceOverrides: {},
   descOverrides: {},
@@ -281,6 +285,7 @@ async function loadCondensado() {
   content.innerHTML = '<div class="loading">Cargando condensado...</div>';
   state.currentView = 'summary';
   state.additionals = [];
+  state.inlineAdditionals = {};
   state.statusOverrides = {};
   state.priceOverrides = {};
   state.descOverrides = {};
@@ -409,7 +414,8 @@ function buildDetailHtml(store, index, monthLabel) {
   });
 
   let tableRows = '';
-  for (const [area, items] of Object.entries(grouped)) {
+  Object.entries(grouped).forEach(([area, items], areaIdx) => {
+    const safeArea = area.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     tableRows += `<tr class="area-header"><td colspan="7">${esc(area)}</td></tr>`;
     items.forEach(item => {
       const _aprLow = (item.aprobado === null || item.aprobado === undefined) ? '' : String(item.aprobado).trim().toLowerCase();
@@ -452,7 +458,50 @@ function buildDetailHtml(store, index, monthLabel) {
         </tr>
       `;
     });
-  }
+    // Inline add button and form per area group
+    tableRows += `
+      <tr class="no-print" id="add-btn-row-${index}-${areaIdx}">
+        <td colspan="8" style="padding:2px 12px 6px 24px">
+          <button class="btn-add-concept" onclick="showInlineForm(${index},${areaIdx},'${safeArea}')">+ Agregar concepto</button>
+        </td>
+      </tr>
+      <tr class="no-print inline-add-form" id="inline-form-row-${index}-${areaIdx}" style="display:none">
+        <td colspan="8" style="padding:8px 12px;background:#f0fff4;border-top:1px dashed #28a745">
+          <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+            <div>
+              <label style="font-size:11px;color:#555;display:block;margin-bottom:2px">Descripción</label>
+              <input type="text" id="ic-desc-${index}-${areaIdx}" placeholder="Ej: Cambio de rieles"
+                style="padding:6px 8px;border:1px solid #ccc;border-radius:5px;font-size:13px;min-width:200px">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#555;display:block;margin-bottom:2px">Cantidad</label>
+              <input type="number" id="ic-qty-${index}-${areaIdx}" placeholder="0" min="0" step="0.01"
+                style="width:80px;padding:6px 8px;border:1px solid #ccc;border-radius:5px;font-size:13px">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#555;display:block;margin-bottom:2px">Unidad</label>
+              <input type="text" id="ic-unit-${index}-${areaIdx}" placeholder="pzas"
+                style="width:70px;padding:6px 8px;border:1px solid #ccc;border-radius:5px;font-size:13px">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#555;display:block;margin-bottom:2px">Precio Unit.</label>
+              <div style="display:flex;gap:4px;align-items:center">
+                <input type="number" id="ic-price-${index}-${areaIdx}" placeholder="0.00" min="0" step="0.01"
+                  style="width:100px;padding:6px 8px;border:1px solid #ccc;border-radius:5px;font-size:13px">
+                <button class="btn-catalog-sm"
+                  onclick="openCatalog({type:'inlineAdd',storeIndex:${index},areaIdx:${areaIdx}})"
+                  title="Buscar en catálogo" style="padding:6px 8px;font-size:15px">&#128269;</button>
+              </div>
+            </div>
+            <button class="btn btn-add" style="height:34px;margin:0;padding:6px 14px"
+              onclick="confirmInlineAdd(${index},${areaIdx},'${safeArea}')">&#10003; Agregar</button>
+            <button class="btn" style="height:34px;margin:0;padding:6px 14px;background:#6c757d;color:#fff"
+              onclick="hideInlineForm(${index},${areaIdx})">Cancelar</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  });
 
   // Compute separate subtotals
   const approvedRegularSubtotal = regularItems.reduce((sum, item) => {
@@ -729,7 +778,10 @@ function getStoreApprovedTotal(storeIndex) {
   const additionalsTotal = state.additionals
     .filter(a => a.storeIndex === storeIndex)
     .reduce((sum, a) => sum + a.amount, 0);
-  return lineTotal + additionalsTotal;
+  const inlineTotal = Object.entries(state.inlineAdditionals)
+    .filter(([key]) => key.startsWith(storeIndex + '-'))
+    .reduce((sum, [, items]) => sum + items.reduce((s, i) => s + i.amount, 0), 0);
+  return lineTotal + additionalsTotal + inlineTotal;
 }
 
 function computeGrandTotal() {
@@ -1013,6 +1065,21 @@ async function savePricesToSFDC(storeIndex) {
     unitPrice: a.unitPrice
   }));
 
+  // Include inline additionals added per area group
+  const inlineForStore = Object.entries(state.inlineAdditionals)
+    .filter(([key]) => key.startsWith(`${storeIndex}-`))
+    .flatMap(([, items]) => items);
+  inlineForStore.forEach(a => {
+    additionalsPayload.push({
+      quoteId: store.firstQuoteId,
+      pricebookEntryId: store.firstPricebookEntryId,
+      concept: a.concept,
+      qty: a.qty,
+      unit: a.unit,
+      unitPrice: a.unitPrice
+    });
+  });
+
   const btn = document.getElementById('save-sfdc-btn-' + storeIndex);
   const statusEl = document.getElementById('save-sfdc-status-' + storeIndex);
 
@@ -1058,6 +1125,14 @@ async function savePricesToSFDC(storeIndex) {
       // Clear saved additionals from state and re-render table
       state.additionals = state.additionals.filter(a => a.storeIndex !== storeIndex);
       renderAdditionals(storeIndex);
+      // Clear inline additionals and remove their pending rows
+      inlineForStore.forEach(a => {
+        const row = document.getElementById(`inline-item-${a.tempId}`);
+        if (row) row.remove();
+      });
+      Object.keys(state.inlineAdditionals)
+        .filter(key => key.startsWith(`${storeIndex}-`))
+        .forEach(key => delete state.inlineAdditionals[key]);
       updateTotals(storeIndex);
     }
 
@@ -1071,6 +1146,76 @@ async function savePricesToSFDC(storeIndex) {
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Guardar en SFDC'; }
   }
+}
+
+// ====== Inline Add per Area ======
+function showInlineForm(storeIndex, areaIdx, areaName) {
+  const formRow = document.getElementById(`inline-form-row-${storeIndex}-${areaIdx}`);
+  const btnRow = document.getElementById(`add-btn-row-${storeIndex}-${areaIdx}`);
+  if (formRow) formRow.style.display = '';
+  if (btnRow) btnRow.style.display = 'none';
+  const desc = document.getElementById(`ic-desc-${storeIndex}-${areaIdx}`);
+  if (desc) desc.focus();
+}
+
+function hideInlineForm(storeIndex, areaIdx) {
+  const formRow = document.getElementById(`inline-form-row-${storeIndex}-${areaIdx}`);
+  const btnRow = document.getElementById(`add-btn-row-${storeIndex}-${areaIdx}`);
+  if (formRow) formRow.style.display = 'none';
+  if (btnRow) btnRow.style.display = '';
+}
+
+function confirmInlineAdd(storeIndex, areaIdx, areaName) {
+  const desc = document.getElementById(`ic-desc-${storeIndex}-${areaIdx}`).value.trim();
+  const qty = parseFloat(document.getElementById(`ic-qty-${storeIndex}-${areaIdx}`).value);
+  const unit = document.getElementById(`ic-unit-${storeIndex}-${areaIdx}`).value.trim();
+  const unitPrice = parseFloat(document.getElementById(`ic-price-${storeIndex}-${areaIdx}`).value);
+  if (!desc || isNaN(qty) || qty <= 0 || isNaN(unitPrice) || unitPrice <= 0) {
+    alert('Por favor completa descripción, cantidad y precio unitario.');
+    return;
+  }
+  const key = `${storeIndex}-${areaIdx}`;
+  if (!state.inlineAdditionals[key]) state.inlineAdditionals[key] = [];
+  const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const item = { concept: desc, qty, unit, unitPrice, amount: qty * unitPrice, tempId, areaName };
+  state.inlineAdditionals[key].push(item);
+
+  // Insert new row before the form row
+  const formRow = document.getElementById(`inline-form-row-${storeIndex}-${areaIdx}`);
+  if (formRow) {
+    const tr = document.createElement('tr');
+    tr.id = `inline-item-${tempId}`;
+    tr.style.background = '#f0fff4';
+    tr.innerHTML = `
+      <td style="padding-left:24px;color:#555">${esc(unit || '—')}</td>
+      <td>${esc(desc)} <span class="no-print" style="font-size:10px;background:#28a745;color:#fff;padding:1px 5px;border-radius:3px;margin-left:4px">NUEVO</span></td>
+      <td></td>
+      <td style="text-align:center">${qty}</td>
+      <td style="text-align:right">${money(unitPrice)}</td>
+      <td style="text-align:right">${money(qty * unitPrice)}</td>
+      <td></td>
+      <td class="no-print" style="text-align:center">
+        <button class="btn-remove" onclick="removeInlineItem('${tempId}','${key}',${storeIndex})">✕</button>
+      </td>`;
+    formRow.parentNode.insertBefore(tr, formRow);
+  }
+
+  // Clear form fields
+  document.getElementById(`ic-desc-${storeIndex}-${areaIdx}`).value = '';
+  document.getElementById(`ic-qty-${storeIndex}-${areaIdx}`).value = '';
+  document.getElementById(`ic-unit-${storeIndex}-${areaIdx}`).value = '';
+  document.getElementById(`ic-price-${storeIndex}-${areaIdx}`).value = '';
+  hideInlineForm(storeIndex, areaIdx);
+  updateTotals(storeIndex);
+}
+
+function removeInlineItem(tempId, key, storeIndex) {
+  if (state.inlineAdditionals[key]) {
+    state.inlineAdditionals[key] = state.inlineAdditionals[key].filter(i => i.tempId !== tempId);
+  }
+  const row = document.getElementById(`inline-item-${tempId}`);
+  if (row) row.remove();
+  updateTotals(storeIndex);
 }
 
 // ====== Catalog ======
@@ -1162,6 +1307,18 @@ function selectPrice(price, description, unit) {
     }
     if (unit) {
       const unitInput = document.getElementById(`addUnit-${storeIndex}`);
+      if (unitInput && !unitInput.value.trim()) unitInput.value = unit;
+    }
+  } else if (target.type === 'inlineAdd') {
+    const { storeIndex, areaIdx } = target;
+    const priceInput = document.getElementById(`ic-price-${storeIndex}-${areaIdx}`);
+    if (priceInput) priceInput.value = price.toFixed(2);
+    if (description) {
+      const descInput = document.getElementById(`ic-desc-${storeIndex}-${areaIdx}`);
+      if (descInput && !descInput.value.trim()) descInput.value = description;
+    }
+    if (unit) {
+      const unitInput = document.getElementById(`ic-unit-${storeIndex}-${areaIdx}`);
       if (unitInput && !unitInput.value.trim()) unitInput.value = unit;
     }
   } else if (target.type === 'lineItem') {
