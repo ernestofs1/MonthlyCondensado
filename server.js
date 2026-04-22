@@ -15,7 +15,7 @@ async function loginToSalesforce() {
     loginUrl: process.env.SF_LOGIN_URL || 'https://orgfarm-05f0452950-dev-ed.develop.my.salesforce.com'
   });
   const username = process.env.SF_USERNAME || 'ernestofs1231@agentforce.com';
-  const passwordAndToken = process.env.SF_PASSWORD_TOKEN || '#Neto020991190007I91cu9p0ISo7576FSB7dtSWg';
+  const passwordAndToken = process.env.SF_PASSWORD_TOKEN || '#Neto020991190007OI9p5doIyErvVmG8dlWpsNrHy';
   await conn.login(username, passwordAndToken);
   return conn;
 }
