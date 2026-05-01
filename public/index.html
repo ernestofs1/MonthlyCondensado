@@ -139,6 +139,15 @@
     .btn-remove { background: none; color: #dc3545; border: 1.5px solid #dc3545; width: 26px; height: 26px; border-radius: 50%; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; line-height: 1; transition: all 0.15s; }
     .btn-remove:hover { background: #dc3545; color: #fff; }
 
+    /* No Ejecutado toggle */
+    .btn-no-ejec { background: none; color: #6c757d; border: 1.5px solid #6c757d; width: 26px; height: 26px; border-radius: 50%; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; line-height: 1; transition: all 0.15s; margin-right: 4px; }
+    .btn-no-ejec:hover { background: #6c757d; color: #fff; }
+    .btn-no-ejec.active { background: #6c757d; color: #fff; }
+    .row-no-ejec { opacity: 0.55; background: #f5f5f5 !important; text-decoration: line-through; }
+    .row-no-ejec textarea, .row-no-ejec input { text-decoration: line-through; color: #888; }
+    .badge-no-ejec { display: inline-block; background: #6c757d; color: #fff; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-left: 6px; letter-spacing: 0.3px; text-decoration: none; vertical-align: middle; }
+    @media print { .badge-no-ejec { -webkit-print-color-adjust: exact; print-color-adjust: exact; } .row-no-ejec { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+
     @media (max-width: 768px) {
       .header { padding: 12px 16px; }
       .toolbar { padding: 8px 12px; gap: 8px; }
@@ -249,6 +258,7 @@ const state = {
   statusOverrides: {},
   priceOverrides: {},
   descOverrides: {},
+  noEjecutado: {},
   additionalPhotos: {},
   catalog: [],
   activeCatalogTarget: null
@@ -289,6 +299,7 @@ async function loadCondensado() {
   state.statusOverrides = {};
   state.priceOverrides = {};
   state.descOverrides = {};
+  state.noEjecutado = {};
   state.additionalPhotos = {};
 
   try {
@@ -420,17 +431,21 @@ function buildDetailHtml(store, index, monthLabel) {
     items.forEach(item => {
       const _aprLow = (item.aprobado === null || item.aprobado === undefined) ? '' : String(item.aprobado).trim().toLowerCase();
       const isNo = _aprLow === 'no' || _aprLow === 'false';
-      const aprobadoHtml = (_aprLow === 'si' || _aprLow === 'true')
-        ? `<span style="color:#155724;font-weight:700;font-size:14px">&#10003; Si</span>`
-        : isNo
-          ? `<span style="color:#721c24;font-weight:700;font-size:14px">&#10007; No</span>`
-          : `<span style="color:#aaa;font-size:12px">—</span>`;
+      const isNoEjec = state.noEjecutado[item.id] === true;
+      const aprobadoHtml = isNoEjec
+        ? `<span class="badge-no-ejec">No Ejecutado</span>`
+        : (_aprLow === 'si' || _aprLow === 'true')
+          ? `<span style="color:#155724;font-weight:700;font-size:14px">&#10003; Si</span>`
+          : isNo
+            ? `<span style="color:#721c24;font-weight:700;font-size:14px">&#10007; No</span>`
+            : `<span style="color:#aaa;font-size:12px">—</span>`;
       const displayUnitPrice = state.priceOverrides[item.id] !== undefined ? state.priceOverrides[item.id] : item.unitPrice;
       const displayTotal = displayUnitPrice * item.quantity;
-      const rowStyle = isNo ? 'opacity:0.45;background:#fff5f5;text-decoration:line-through;' : '';
+      const rowClass = isNoEjec ? 'row-no-ejec' : '';
+      const rowStyle = (!isNoEjec && isNo) ? 'opacity:0.45;background:#fff5f5;text-decoration:line-through;' : '';
       const descVal = esc(item.descTrabajo || item.description);
       tableRows += `
-        <tr style="${rowStyle}" data-item-id="${item.id}">
+        <tr class="${rowClass}" style="${rowStyle}" data-item-id="${item.id}">
           <td style="padding-left:24px">${esc(item.subItem)}</td>
           <td>
             <textarea class="inp-desc-condensado no-print"
@@ -451,8 +466,9 @@ function buildDetailHtml(store, index, monthLabel) {
             </div>
           </td>
           <td id="total-cell-${item.id}" style="text-align:right">${money(displayTotal)}</td>
-          <td style="text-align:center">${aprobadoHtml}</td>
-          <td class="no-print" style="text-align:center">
+          <td id="aprobado-cell-${item.id}" style="text-align:center">${aprobadoHtml}</td>
+          <td class="no-print" style="text-align:center;white-space:nowrap">
+            <button class="btn-no-ejec ${isNoEjec ? 'active' : ''}" onclick="toggleNoEjecutado('${item.id}',${index})" title="Marcar como No Ejecutado (no cuenta para el total)">NE</button>
             <button class="btn-remove" onclick="deleteLineItem('${item.id}',${index})" title="Eliminar fila">✕</button>
           </td>
         </tr>
@@ -505,12 +521,14 @@ function buildDetailHtml(store, index, monthLabel) {
 
   // Compute separate subtotals
   const approvedRegularSubtotal = regularItems.reduce((sum, item) => {
+    if (state.noEjecutado[item.id]) return sum;
     const _a = (item.aprobado === null || item.aprobado === undefined) ? '' : String(item.aprobado).trim().toLowerCase();
     if (_a === 'no' || _a === 'false') return sum;
     const up = state.priceOverrides[item.id] !== undefined ? state.priceOverrides[item.id] : item.unitPrice;
     return sum + up * item.quantity;
   }, 0);
   const adicionalItemsSubtotal = adicionalItems.reduce((sum, item) => {
+    if (state.noEjecutado[item.id]) return sum;
     const up = state.priceOverrides[item.id] !== undefined ? state.priceOverrides[item.id] : item.unitPrice;
     return sum + up * item.quantity;
   }, 0);
@@ -528,12 +546,14 @@ function buildDetailHtml(store, index, monthLabel) {
     `;
     tableRows += `<tr class="area-header"><td colspan="7">ADICIONALES</td></tr>`;
     adicionalItems.forEach(item => {
+      const isNoEjec = state.noEjecutado[item.id] === true;
       const displayUnitPrice = state.priceOverrides[item.id] !== undefined ? state.priceOverrides[item.id] : item.unitPrice;
       const displayTotal = displayUnitPrice * item.quantity;
       const unitVal = esc(item.description);   // unit stored in Description after our marker change
       const descVal = esc(item.descTrabajo);   // concept stored in Descripcion_trabajo__c
+      const rowClass = isNoEjec ? 'row-no-ejec' : '';
       tableRows += `
-        <tr data-item-id="${item.id}">
+        <tr class="${rowClass}" data-item-id="${item.id}">
           <td style="padding-left:24px">${unitVal}</td>
           <td>
             <textarea class="inp-desc-condensado no-print"
@@ -554,8 +574,9 @@ function buildDetailHtml(store, index, monthLabel) {
             </div>
           </td>
           <td id="total-cell-${item.id}" style="text-align:right">${money(displayTotal)}</td>
-          <td></td>
-          <td class="no-print" style="text-align:center">
+          <td id="aprobado-cell-${item.id}" style="text-align:center">${isNoEjec ? '<span class="badge-no-ejec">No Ejecutado</span>' : ''}</td>
+          <td class="no-print" style="text-align:center;white-space:nowrap">
+            <button class="btn-no-ejec ${isNoEjec ? 'active' : ''}" onclick="toggleNoEjecutado('${item.id}',${index})" title="Marcar como No Ejecutado (no cuenta para el total)">NE</button>
             <button class="btn-remove" onclick="deleteLineItem('${item.id}',${index})" title="Eliminar fila">✕</button>
           </td>
         </tr>
@@ -770,6 +791,7 @@ function getStoreApprovedTotal(storeIndex) {
   const store = state.data && state.data.stores[storeIndex];
   if (!store) return 0;
   const lineTotal = store.lineItems.reduce((sum, item) => {
+    if (state.noEjecutado[item.id]) return sum;
     const _a = (item.aprobado === null || item.aprobado === undefined) ? '' : String(item.aprobado).trim().toLowerCase();
     if (_a === 'no' || _a === 'false') return sum;
     const up = state.priceOverrides[item.id] !== undefined ? state.priceOverrides[item.id] : item.unitPrice;
@@ -795,12 +817,14 @@ function updateTotals(storeIndex) {
     const regularItems = store.lineItems.filter(l => l.subItem !== 'ADICIONAL');
     const adicionalItems = store.lineItems.filter(l => l.subItem === 'ADICIONAL');
     const approvedRegularTotal = regularItems.reduce((sum, item) => {
+      if (state.noEjecutado[item.id]) return sum;
       const _a = (item.aprobado === null || item.aprobado === undefined) ? '' : String(item.aprobado).trim().toLowerCase();
       if (_a === 'no' || _a === 'false') return sum;
       const up = state.priceOverrides[item.id] !== undefined ? state.priceOverrides[item.id] : item.unitPrice;
       return sum + up * item.quantity;
     }, 0);
     const adicionalTotal = adicionalItems.reduce((sum, item) => {
+      if (state.noEjecutado[item.id]) return sum;
       const up = state.priceOverrides[item.id] !== undefined ? state.priceOverrides[item.id] : item.unitPrice;
       return sum + up * item.quantity;
     }, 0);
@@ -888,6 +912,57 @@ async function deleteLineItem(itemId, storeIndex) {
   store.lineItems = store.lineItems.filter(l => l.id !== itemId);
   const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
   if (row) row.remove();
+  updateTotals(storeIndex);
+}
+
+// ====== No Ejecutado Toggle ======
+function toggleNoEjecutado(itemId, storeIndex) {
+  const isCurrentlyMarked = state.noEjecutado[itemId] === true;
+  if (isCurrentlyMarked) {
+    delete state.noEjecutado[itemId];
+  } else {
+    state.noEjecutado[itemId] = true;
+  }
+  const newState = !isCurrentlyMarked;
+
+  // Update the row's class
+  const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
+  if (row) {
+    if (newState) {
+      row.classList.add('row-no-ejec');
+      // Clear any inline style strikethrough so we don't double-up; the class handles it
+      row.style.opacity = '';
+      row.style.background = '';
+      row.style.textDecoration = '';
+    } else {
+      row.classList.remove('row-no-ejec');
+    }
+    // Update the toggle button
+    const btn = row.querySelector('.btn-no-ejec');
+    if (btn) btn.classList.toggle('active', newState);
+  }
+
+  // Update the Aprobado cell to show/hide the badge
+  const aprobadoCell = document.getElementById('aprobado-cell-' + itemId);
+  if (aprobadoCell) {
+    if (newState) {
+      aprobadoCell.innerHTML = '<span class="badge-no-ejec">No Ejecutado</span>';
+    } else {
+      // Restore original Aprobado display
+      const store = state.data && state.data.stores[storeIndex];
+      const item = store && store.lineItems.find(l => l.id === itemId);
+      if (item) {
+        const _aprLow = (item.aprobado === null || item.aprobado === undefined) ? '' : String(item.aprobado).trim().toLowerCase();
+        const isNo = _aprLow === 'no' || _aprLow === 'false';
+        aprobadoCell.innerHTML = (_aprLow === 'si' || _aprLow === 'true')
+          ? `<span style="color:#155724;font-weight:700;font-size:14px">&#10003; Si</span>`
+          : isNo
+            ? `<span style="color:#721c24;font-weight:700;font-size:14px">&#10007; No</span>`
+            : (item.subItem === 'ADICIONAL' ? '' : `<span style="color:#aaa;font-size:12px">—</span>`);
+      }
+    }
+  }
+
   updateTotals(storeIndex);
 }
 
