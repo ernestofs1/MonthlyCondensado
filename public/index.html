@@ -307,6 +307,12 @@ async function loadCondensado() {
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error);
     state.data = data;
+    // Hydrate noEjecutado from server (persisted state)
+    (data.stores || []).forEach(store => {
+      (store.lineItems || []).forEach(item => {
+        if (item.noEjecutado === true) state.noEjecutado[item.id] = true;
+      });
+    });
     renderSummary();
   } catch (err) {
     content.innerHTML = `<div class="loading" style="color:red">Error: ${esc(err.message)}</div>`;
@@ -1119,13 +1125,20 @@ async function savePricesToSFDC(storeIndex) {
   const store = state.data && state.data.stores[storeIndex];
   if (!store) return;
 
-  // Collect existing line item changes (price + description)
+  // Collect existing line item changes (price + description + noEjecutado)
   const updates = store.lineItems
-    .filter(item => state.priceOverrides[item.id] !== undefined || state.descOverrides[item.id] !== undefined)
+    .filter(item => {
+      const noEjecChanged = (state.noEjecutado[item.id] === true) !== (item.noEjecutado === true);
+      return state.priceOverrides[item.id] !== undefined
+        || state.descOverrides[item.id] !== undefined
+        || noEjecChanged;
+    })
     .map(item => {
       const u = { id: item.id };
       if (state.priceOverrides[item.id] !== undefined) u.unitPrice = state.priceOverrides[item.id];
       if (state.descOverrides[item.id] !== undefined) u.descripcionTrabajo = state.descOverrides[item.id];
+      const noEjecChanged = (state.noEjecutado[item.id] === true) !== (item.noEjecutado === true);
+      if (noEjecChanged) u.noEjecutado = state.noEjecutado[item.id] === true;
       return u;
     });
 
@@ -1184,6 +1197,11 @@ async function savePricesToSFDC(storeIndex) {
       const data = await resp.json();
       if (!resp.ok || !data.success) throw new Error(data.message || data.error || 'Error al guardar cambios');
       savedCount += updates.length;
+      // Sync local "original" state so subsequent saves don't re-send unchanged fields
+      updates.forEach(u => {
+        const item = store.lineItems.find(l => l.id === u.id);
+        if (item && u.noEjecutado !== undefined) item.noEjecutado = u.noEjecutado;
+      });
     }
 
     // Save new additionals

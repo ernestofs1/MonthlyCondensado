@@ -120,7 +120,7 @@ app.get('/api/condensado', async (req, res) => {
       const linesResult = await conn.query(`
         SELECT Id, PricebookEntryId, UnitPrice, Quantity, TotalPrice, Discount,
           Foto_2__c, Sub_ITEM__c, Description, Descripcion_trabajo__c,
-          Aprobado__c,
+          Aprobado__c, No_Ejecutado__c,
           PricebookEntry.Name, PricebookEntry.Product2.Name
         FROM QuoteLineItem
         WHERE QuoteId = '${escapeSOQLString(quote.Id)}'
@@ -144,7 +144,8 @@ app.get('/api/condensado', async (req, res) => {
         unitPrice: Number(l.UnitPrice || 0),
         totalPrice: Number(l.TotalPrice || 0),
         discount: Number(l.Discount || 0),
-        aprobado: l.Aprobado__c != null ? l.Aprobado__c : null
+        aprobado: l.Aprobado__c != null ? l.Aprobado__c : null,
+        noEjecutado: l.No_Ejecutado__c === true
       }));
 
       if (!storeMap[storeName]) {
@@ -221,6 +222,7 @@ app.post('/api/update-prices', async (req, res) => {
       const updateData = { Id: item.id };
       if (item.unitPrice !== undefined) updateData.UnitPrice = Number(item.unitPrice);
       if (item.descripcionTrabajo !== undefined) updateData.Descripcion_trabajo__c = item.descripcionTrabajo;
+      if (item.noEjecutado !== undefined) updateData.No_Ejecutado__c = item.noEjecutado === true;
       const result = await conn.sobject('QuoteLineItem').update(updateData);
       results.push({ id: item.id, success: result.success, errors: result.errors });
     }
